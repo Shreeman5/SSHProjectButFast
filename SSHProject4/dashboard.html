@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Attack Data Dashboard</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
+            overflow-x: auto;
+        }
+        
+        .chart-container {
+            background: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .chart-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .chart-subtitle {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 15px;
+        }
+        
+        .axis path,
+        .axis line {
+            stroke: #ddd;
+        }
+        
+        .axis text {
+            font-size: 11px;
+        }
+        
+        .line {
+            fill: none;
+            stroke-width: 2px;
+        }
+        
+        .grid line {
+            stroke: #e0e0e0;
+            stroke-opacity: 0.7;
+            shape-rendering: crispEdges;
+        }
+        
+        .grid path {
+            stroke-width: 0;
+        }
+        
+        .tooltip {
+            position: absolute;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            border-radius: 5px;
+            pointer-events: none;
+            font-size: 12px;
+            opacity: 0;
+            transition: opacity 0.2s;
+            z-index: 1000;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .brush .selection {
+            fill: steelblue;
+            fill-opacity: 0.3;
+        }
+        
+        .filter-info {
+            background: #e3f2fd;
+            padding: 10px;
+            margin-bottom: 15px;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+        
+        .reset-btn {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            margin-left: 10px;
+        }
+        
+        .reset-btn:hover {
+            background: #1976D2;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+    </style>
+</head>
+<body>
+    <h1>SSH Attack Analysis Dashboard</h1>
+    
+    <div id="filter-info" class="filter-info" style="display:none;">
+        <span id="filter-text"></span>
+        <button class="reset-btn" onclick="resetFilters()">Reset All Filters</button>
+    </div>
+    
+    <div id="chart1" class="chart-container">
+        <div class="chart-title">1. Total Attacks Over Time</div>
+        <div class="chart-subtitle">Daily attack volume | Brush to zoom</div>
+        <div id="datechart"></div>
+    </div>
+    
+    <div id="chart2" class="chart-container">
+        <div class="chart-title">2. Top 10 Attacking Countries</div>
+        <div class="chart-subtitle">Click a line to filter other charts</div>
+        <div id="countrychart"></div>
+    </div>
+    
+    <div id="chart3" class="chart-container">
+        <div class="chart-title">3. Top 10 Most Volatile Countries</div>
+        <div class="chart-subtitle">Countries with biggest day-to-day changes | Click to filter</div>
+        <div id="unusualchart"></div>
+    </div>
+    
+    <div id="chart4" class="chart-container">
+        <div class="chart-title">4. Top 10 Attacking IPs</div>
+        <div class="chart-subtitle">Click to filter</div>
+        <div id="ipchart"></div>
+    </div>
+    
+    <div id="chart5" class="chart-container">
+        <div class="chart-title">5. Top 10 Attacking Usernames</div>
+        <div class="chart-subtitle">Click to filter</div>
+        <div id="usernamechart"></div>
+    </div>
+    
+    <div id="chart6" class="chart-container">
+        <div class="chart-title">6. Top 10 Attacking ASN Organizations</div>
+        <div class="chart-subtitle">Click to filter</div>
+        <div id="asnchart"></div>
+    </div>
+
+    <script>
+        // Configuration
+        const API_BASE = 'http://localhost:5000/api';
+        const CHART_WIDTH = 1800;
+        const CHART_HEIGHT = 370;
+        const MARGIN = {top: 20, right: 120, bottom: 90, left: 80};
+        
+        // Global state
+        let state = {
+            startDate: '2022-11-01',
+            endDate: '2023-01-08',
+            country: null,
+            ip: null,
+            username: null,
+            asn: null
+        };
+        
+        // Color scale
+        const color = d3.scaleOrdinal(d3.schemeCategory10);
+        
+        // Initialize dashboard
+        init();
+        
+        async function init() {
+            // Read URL parameters
+            const params = new URLSearchParams(window.location.search);
+            state.startDate = params.get('start') || state.startDate;
+            state.endDate = params.get('end') || state.endDate;
+            state.country = params.get('country') || null;
+            
+            updateFilterInfo();
+            await loadAllCharts();
+        }
+        
+        function updateFilterInfo() {
+            const filterInfo = document.getElementById('filter-info');
+            const filterText = document.getElementById('filter-text');
+            
+            let filters = [];
+            if (state.startDate && state.endDate) {
+                filters.push(`Date: ${state.startDate} to ${state.endDate}`);
+            }
+            if (state.country) filters.push(`Country: ${state.country}`);
+            if (state.ip) filters.push(`IP: ${state.ip}`);
+            if (state.username) filters.push(`Username: ${state.username}`);
+            if (state.asn) filters.push(`ASN: ${state.asn}`);
+            
+            if (filters.length > 0) {
+                filterText.textContent = 'Active Filters: ' + filters.join(' | ');
+                filterInfo.style.display = 'block';
+            } else {
+                filterInfo.style.display = 'none';
+            }
+        }
+        
+        function resetFilters() {
+            state.startDate = '2022-11-01';
+            state.endDate = '2023-01-08';
+            state.country = null;
+            state.ip = null;
+            state.username = null;
+            state.asn = null;
+            
+            updateURL();
+            updateFilterInfo();
+            loadAllCharts();
+        }
+        
+        function updateURL() {
+            const params = new URLSearchParams();
+            params.set('start', state.startDate);
+            params.set('end', state.endDate);
+            if (state.country) params.set('country', state.country);
+            
+            window.history.pushState({}, '', `?${params.toString()}`);
+        }
+        
+        async function loadAllCharts() {
+            console.log('Loading all charts with state:', state);
+            await Promise.all([
+                loadTotalAttacks(),
+                loadCountryAttacks(),
+                loadUnusualCountries(),
+                loadIPAttacks(),
+                loadUsernameAttacks(),
+                loadASNAttacks()
+            ]);
+            console.log('All charts loaded successfully');
+        }
+        
+        async function loadTotalAttacks() {
+            const url = `${API_BASE}/total_attacks?start=${state.startDate}&end=${state.endDate}`;
+            const data = await fetch(url).then(r => r.json());
+            
+            renderLineChart('datechart', data, {
+                xKey: 'date',
+                yKey: 'attacks',
+                color: '#7c4dff', // Purple color
+                enableBrush: true,
+                onBrush: (start, end) => {
+                    state.startDate = start;
+                    state.endDate = end;
+                    updateURL();
+                    updateFilterInfo();
+                    loadAllCharts();
+                }
+            });
+        }
+        
+        async function loadCountryAttacks() {
+            let url = `${API_BASE}/country_attacks?start=${state.startDate}&end=${state.endDate}`;
+            if (state.country) url += `&country=${state.country}`;
+            
+            const data = await fetch(url).then(r => r.json());
+
+            console.log('Country data raw:', data);
+            console.log('Total attacks in country data:', data.reduce((sum, d) => sum + d.attacks, 0));
+            console.log('Unique countries:', [...new Set(data.map(d => d.country))]);
+            
+            const nested = d3.group(data, d => d.country);
+            const series = Array.from(nested, ([key, values]) => ({key, values}));
+            
+            renderMultiLineChart('countrychart', series, {
+                xKey: 'date',
+                yKey: 'attacks',
+                onClick: (country) => {
+                    state.country = country;
+                    updateURL();
+                    updateFilterInfo();
+                    loadAllCharts();
+                }
+            });
+        }
+        
+        async function loadUnusualCountries() {
+            const url = `${API_BASE}/unusual_countries?start=${state.startDate}&end=${state.endDate}`;
+            const data = await fetch(url).then(r => r.json());
+            
+            const nested = d3.group(data, d => d.country);
+            const series = Array.from(nested, ([key, values]) => ({key, values}));
+            
+            renderMultiLineChart('unusualchart', series, {
+                xKey: 'date',
+                yKey: 'attacks',
+                onClick: (country) => {
+                    state.country = country;
+                    updateURL();
+                    updateFilterInfo();
+                    loadAllCharts();
+                }
+            });
+        }
+        
+        async function loadIPAttacks() {
+            let url = `${API_BASE}/ip_attacks?start=${state.startDate}&end=${state.endDate}`;
+            if (state.country) url += `&country=${state.country}`;
+            
+            const data = await fetch(url).then(r => r.json());
+            
+            const nested = d3.group(data, d => d.IP);
+            const series = Array.from(nested, ([key, values]) => ({key, values}));
+            
+            renderMultiLineChart('ipchart', series, {
+                xKey: 'date',
+                yKey: 'attacks'
+            });
+        }
+        
+        async function loadUsernameAttacks() {
+            let url = `${API_BASE}/username_attacks?start=${state.startDate}&end=${state.endDate}`;
+            if (state.country) url += `&country=${state.country}`;
+            
+            const data = await fetch(url).then(r => r.json());
+            
+            const nested = d3.group(data, d => d.Username);
+            const series = Array.from(nested, ([key, values]) => ({key, values}));
+            
+            renderMultiLineChart('usernamechart', series, {
+                xKey: 'date',
+                yKey: 'attacks'
+            });
+        }
+        
+        async function loadASNAttacks() {
+            let url = `${API_BASE}/asn_attacks?start=${state.startDate}&end=${state.endDate}`;
+            if (state.country) url += `&country=${state.country}`;
+            
+            const data = await fetch(url).then(r => r.json());
+            
+            const nested = d3.group(data, d => d.asn_name);
+            const series = Array.from(nested, ([key, values]) => ({key, values}));
+            
+            renderMultiLineChart('asnchart', series, {
+                xKey: 'date',
+                yKey: 'attacks'
+            });
+        }
+        
+        function renderLineChart(containerId, data, options) {
+            const container = d3.select(`#${containerId}`);
+            container.selectAll('*').remove();
+            // Console log data for debugging
+            console.log(`${containerId} data:`, {
+                rows: data.length,
+                firstRow: data[0],
+                lastRow: data[data.length - 1],
+                sample: data.slice(0, 5)
+            });
+            
+            const svg = container.append('svg')
+                .attr('width', CHART_WIDTH)
+                .attr('height', CHART_HEIGHT);
+            
+            const g = svg.append('g')
+                .attr('transform', `translate(${MARGIN.left},${MARGIN.top})`);
+            
+            const width = CHART_WIDTH - MARGIN.left - MARGIN.right;
+            const height = CHART_HEIGHT - MARGIN.top - MARGIN.bottom;
+            
+            // Parse dates as local dates (not UTC) to avoid timezone shift
+            data.forEach(d => {
+                const parts = d.date.split('-');
+                d.date = new Date(parts[0], parts[1] - 1, parts[2]); // Local date
+            });
+            
+            // Scales
+            const x = d3.scaleTime()
+                .domain(d3.extent(data, d => d.date))
+                .range([0, width]);
+            
+            const y = d3.scaleLinear()
+                .domain([0, d3.max(data, d => d[options.yKey])])
+                .range([height, 0]);
+            
+            // Add grid lines
+            g.append('g')
+                .attr('class', 'grid')
+                .attr('transform', `translate(0,${height})`)
+                .call(d3.axisBottom(x)
+                    .ticks(data.length) // One tick per data point
+                    .tickSize(-height)
+                    .tickFormat(''));
+            
+            g.append('g')
+                .attr('class', 'grid')
+                .call(d3.axisLeft(y)
+                    .ticks(5)
+                    .tickSize(-width)
+                    .tickFormat(''));
+            
+            // X-axis with all dates, rotated labels, smaller font
+            g.append('g')
+                .attr('class', 'axis')
+                .attr('transform', `translate(0,${height})`)
+                .call(d3.axisBottom(x)
+                    .ticks(data.length)
+                    .tickFormat(d3.timeFormat('%m/%d')))
+                .selectAll('text')
+                .style('text-anchor', 'end')
+                .style('font-size', '9px')
+                .attr('dx', '-.8em')
+                .attr('dy', '.15em')
+                .attr('transform', 'rotate(-45)');
+            
+            // Y-axis
+            g.append('g')
+                .attr('class', 'axis')
+                .call(d3.axisLeft(y)
+                    .ticks(5)
+                    .tickFormat(d => d.toLocaleString()));
+            
+            // Line
+            const line = d3.line()
+                .x(d => x(d.date))
+                .y(d => y(d[options.yKey]));
+            
+            g.append('path')
+                .datum(data)
+                .attr('class', 'line')
+                .attr('d', line)
+                .attr('stroke', options.color || '#7c4dff'); // Purple color
+            
+            // Add brush BEFORE dots so dots are on top
+            if (options.enableBrush) {
+                const brush = d3.brushX()
+                    .extent([[0, 0], [width, height]])
+                    .on('end', brushed);
+                
+                const brushGroup = g.append('g')
+                    .attr('class', 'brush')
+                    .call(brush);
+                
+                // Make brush overlay not block mouse events when not brushing
+                brushGroup.select('.overlay')
+                    .style('pointer-events', 'all');
+                
+                brushGroup.select('.selection')
+                    .style('pointer-events', 'none');
+                
+                function brushed(event) {
+                    if (!event.selection) return;
+                    const [x0, x1] = event.selection.map(x.invert);
+                    const start = d3.timeFormat('%Y-%m-%d')(x0);
+                    const end = d3.timeFormat('%Y-%m-%d')(x1);
+                    console.log('Brushed date range:', start, 'to', end);
+                    options.onBrush(start, end);
+                }
+            }
+            
+            // Create or reuse tooltip
+            let tooltip = d3.select('body').select('.tooltip');
+            if (tooltip.empty()) {
+                tooltip = d3.select('body').append('div').attr('class', 'tooltip');
+            }
+            
+            // Add visible circles for each data point AFTER brush so they're on top
+            // First add larger invisible hit areas
+            g.selectAll('.dot-hitarea')
+                .data(data)
+                .enter().append('circle')
+                .attr('class', 'dot-hitarea')
+                .attr('cx', d => x(d.date))
+                .attr('cy', d => y(d[options.yKey]))
+                .attr('r', 8) // Larger hit area
+                .attr('fill', 'transparent')
+                .style('cursor', 'pointer')
+                .style('pointer-events', 'all')
+                .on('mouseover', function(event, d) {
+                    // Highlight the visible dot
+                    d3.select(this.parentNode).selectAll('.dot')
+                        .filter(dd => dd.date.getTime() === d.date.getTime())
+                        .attr('r', 6).attr('opacity', 1);
+                    
+                    tooltip.transition().duration(200).style('opacity', 1);
+                    tooltip.html(`
+                            <strong>Date:</strong> ${d3.timeFormat('%Y-%m-%d')(d.date)}<br>
+                            <strong>Attacks:</strong> ${d[options.yKey].toLocaleString()}
+                        `)
+                        .style('left', (event.pageX + 10) + 'px')
+                        .style('top', (event.pageY - 10) + 'px');
+                })
+                .on('mouseout', function(event, d) {
+                    // Reset the visible dot
+                    d3.select(this.parentNode).selectAll('.dot')
+                        .filter(dd => dd.date.getTime() === d.date.getTime())
+                        .attr('r', 3).attr('opacity', 0.7);
+                    
+                    tooltip.transition().duration(200).style('opacity', 0);
+                });
+            
+            // Then add visible dots on top
+            g.selectAll('.dot')
+                .data(data)
+                .enter().append('circle')
+                .attr('class', 'dot')
+                .attr('cx', d => x(d.date))
+                .attr('cy', d => y(d[options.yKey]))
+                .attr('r', 3)
+                .attr('fill', options.color || '#7c4dff')
+                .attr('opacity', 0.7)
+                .attr('stroke', 'white')
+                .attr('stroke-width', 1)
+                .style('pointer-events', 'none'); // Don't capture events, let hitarea handle it
+            
+            // Brush is now rendered, dots are on top and will receive events
+        }
+        
+        function renderMultiLineChart(containerId, series, options) {
+            const container = d3.select(`#${containerId}`);
+            container.selectAll('*').remove();
+            
+            if (series.length === 0) {
+                container.append('div')
+                    .attr('class', 'loading')
+                    .text('No data available for current filters');
+                return;
+            }
+            
+            // Console log data for debugging
+            console.log(`${containerId} data:`, {
+                seriesCount: series.length,
+                seriesNames: series.map(s => s.key),
+                firstSeries: series[0]?.key,
+                sampleData: series[0]?.values.slice(0, 3)
+            });
+            
+            const svg = container.append('svg')
+                .attr('width', CHART_WIDTH)
+                .attr('height', CHART_HEIGHT);
+            
+            const g = svg.append('g')
+                .attr('transform', `translate(${MARGIN.left},${MARGIN.top})`);
+            
+            const width = CHART_WIDTH - MARGIN.left - MARGIN.right;
+            const height = CHART_HEIGHT - MARGIN.top - MARGIN.bottom;
+            
+            // Parse dates as local dates to avoid timezone shift
+            series.forEach(s => {
+                s.values.forEach(d => {
+                    const parts = d.date.split('-');
+                    d.date = new Date(parts[0], parts[1] - 1, parts[2]);
+                });
+            });
+            
+            // Scales
+            const x = d3.scaleTime()
+                .domain([
+                    d3.min(series, s => d3.min(s.values, d => d.date)),
+                    d3.max(series, s => d3.max(s.values, d => d.date))
+                ])
+                .range([0, width]);
+            
+            const y = d3.scaleLinear()
+                .domain([0, d3.max(series, s => d3.max(s.values, d => d[options.yKey]))])
+                .range([height, 0]);
+            
+            // Add grid lines
+            g.append('g')
+                .attr('class', 'grid')
+                .attr('transform', `translate(0,${height})`)
+                .call(d3.axisBottom(x)
+                    .ticks(d3.max(series, s => s.values.length))
+                    .tickSize(-height)
+                    .tickFormat(''));
+            
+            g.append('g')
+                .attr('class', 'grid')
+                .call(d3.axisLeft(y)
+                    .ticks(5)
+                    .tickSize(-width)
+                    .tickFormat(''));
+            
+            // X-axis with all dates, rotated labels, smaller font
+            g.append('g')
+                .attr('class', 'axis')
+                .attr('transform', `translate(0,${height})`)
+                .call(d3.axisBottom(x)
+                    .ticks(d3.max(series, s => s.values.length))
+                    .tickFormat(d3.timeFormat('%m/%d')))
+                .selectAll('text')
+                .style('text-anchor', 'end')
+                .style('font-size', '9px')
+                .attr('dx', '-.8em')
+                .attr('dy', '.15em')
+                .attr('transform', 'rotate(-45)');
+            
+            // Y-axis
+            g.append('g')
+                .attr('class', 'axis')
+                .call(d3.axisLeft(y)
+                    .ticks(5)
+                    .tickFormat(d => d.toLocaleString()));
+            
+            // Create or reuse tooltip
+            let tooltip = d3.select('body').select('.tooltip');
+            if (tooltip.empty()) {
+                tooltip = d3.select('body').append('div').attr('class', 'tooltip');
+            }
+            
+            // Lines
+            const line = d3.line()
+                .x(d => x(d.date))
+                .y(d => y(d[options.yKey]));
+            
+            series.forEach((s, i) => {
+                const lineColor = color(s.key);
+                
+                // Draw line
+                g.append('path')
+                    .datum(s.values)
+                    .attr('class', 'line')
+                    .attr('d', line)
+                    .attr('stroke', lineColor)
+                    .style('cursor', options.onClick ? 'pointer' : 'default')
+                    .on('click', function() {
+                        if (options.onClick) {
+                            console.log('Clicked:', s.key);
+                            options.onClick(s.key);
+                        }
+                    })
+                    .on('mouseover', function() {
+                        d3.select(this).attr('stroke-width', 4);
+                    })
+                    .on('mouseout', function() {
+                        d3.select(this).attr('stroke-width', 2);
+                    });
+                
+                // Add visible hover points
+                g.selectAll(`.dot-${i}`)
+                    .data(s.values)
+                    .enter().append('circle')
+                    .attr('class', `dot-${i}`)
+                    .attr('cx', d => x(d.date))
+                    .attr('cy', d => y(d[options.yKey]))
+                    .attr('r', 2.5)
+                    .attr('fill', lineColor)
+                    .attr('opacity', 0.7)
+                    .attr('stroke', 'white')
+                    .attr('stroke-width', 1)
+                    .style('cursor', 'pointer')
+                    .on('mouseover', function(event, d) {
+                        d3.select(this).attr('r', 5).attr('opacity', 1);
+                        tooltip.transition().duration(200).style('opacity', 1);
+                        tooltip.html(`
+                                <strong>${s.key}</strong><br>
+                                <strong>Date:</strong> ${d3.timeFormat('%Y-%m-%d')(d.date)}<br>
+                                <strong>Attacks:</strong> ${d[options.yKey].toLocaleString()}
+                            `)
+                            .style('left', (event.pageX + 10) + 'px')
+                            .style('top', (event.pageY - 10) + 'px');
+                    })
+                    .on('mouseout', function() {
+                        d3.select(this).attr('r', 2.5).attr('opacity', 0.7);
+                        tooltip.transition().duration(200).style('opacity', 0);
+                    });
+            });
+            
+            // Legend
+            const legend = g.append('g')
+                .attr('transform', `translate(${width + 10}, 0)`);
+            
+            series.forEach((s, i) => {
+                const legendRow = legend.append('g')
+                    .attr('transform', `translate(0, ${i * 20})`)
+                    .style('cursor', options.onClick ? 'pointer' : 'default')
+                    .on('click', function() {
+                        if (options.onClick) {
+                            console.log('Legend clicked:', s.key);
+                            options.onClick(s.key);
+                        }
+                    });
+                
+                legendRow.append('rect')
+                    .attr('width', 15)
+                    .attr('height', 15)
+                    .attr('fill', color(s.key));
+                
+                legendRow.append('text')
+                    .attr('x', 20)
+                    .attr('y', 12)
+                    .attr('font-size', '11px')
+                    .text(s.key.substring(0, 20));
+            });
+        }
+    </script>
+</body>
+</html>
