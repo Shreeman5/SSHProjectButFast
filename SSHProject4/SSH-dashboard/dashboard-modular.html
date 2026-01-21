@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Attack Data Dashboard</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
+            overflow-x: auto;
+        }
+        
+        .chart-container {
+            background: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .chart-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .chart-subtitle {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 15px;
+        }
+        
+        .axis path,
+        .axis line {
+            stroke: #ddd;
+        }
+        
+        .axis text {
+            font-size: 11px;
+        }
+        
+        .line {
+            fill: none;
+            stroke-width: 2px;
+        }
+        
+        .grid line {
+            stroke: #e0e0e0;
+            stroke-opacity: 0.7;
+            shape-rendering: crispEdges;
+        }
+        
+        .grid path {
+            stroke-width: 0;
+        }
+        
+        .tooltip {
+            position: absolute;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            border-radius: 5px;
+            pointer-events: none;
+            font-size: 12px;
+            opacity: 0;
+            transition: opacity 0.2s;
+            z-index: 1000;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .brush .selection {
+            fill: steelblue;
+            fill-opacity: 0.3;
+        }
+        
+        .filter-info {
+            background: #e3f2fd;
+            padding: 10px;
+            margin-bottom: 15px;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+        
+        .reset-btn {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            margin-left: 10px;
+        }
+        
+        .reset-btn:hover {
+            background: #1976D2;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+    </style>
+</head>
+<body>
+    <h1>SSH Attack Analysis Dashboard</h1>
+    
+    <div id="filter-info" class="filter-info" style="display:none;">
+        <span id="filter-text"></span>
+        <button class="reset-btn" onclick="resetFilters()">Reset All Filters</button>
+    </div>
+    
+    <div id="chart1" class="chart-container">
+        <div class="chart-title">1. Total Attacks Over Time</div>
+        <div class="chart-subtitle">Daily attack volume | Brush to zoom</div>
+        <div id="datechart"></div>
+    </div>
+    
+    <div id="chart2" class="chart-container">
+        <div class="chart-title">2. Top 10 Attacking Countries</div>
+        <div class="chart-subtitle">Click a line to filter other charts</div>
+        <div id="countrychart"></div>
+    </div>
+    
+    <div id="chart3" class="chart-container">
+        <div class="chart-title">3. Top 10 Most Volatile Countries</div>
+        <div class="chart-subtitle">Countries with biggest day-to-day changes | Click to filter</div>
+        <div id="unusualchart"></div>
+    </div>
+    
+    <div id="chart4" class="chart-container">
+        <div class="chart-title">4. Top 10 Attacking IPs</div>
+        <div class="chart-subtitle">Click to filter</div>
+        <div id="ipchart"></div>
+    </div>
+    
+    <div id="chart5" class="chart-container">
+        <div class="chart-title">5. Top 10 Attacking Usernames</div>
+        <div class="chart-subtitle">Click to filter</div>
+        <div id="usernamechart"></div>
+    </div>
+    
+    <div id="chart6" class="chart-container">
+        <div class="chart-title">6. Top 10 Attacking ASN Organizations</div>
+        <div class="chart-subtitle">Click to filter</div>
+        <div id="asnchart"></div>
+    </div>
+
+    <!-- Load JavaScript modules in order -->
+    <script src="config.js"></script>
+    <script src="chart-renderers.js"></script>
+    <script src="chart1-total.js"></script>
+    <script src="chart2-countries.js"></script>
+    <script src="chart3-volatile.js"></script>
+    <script src="chart4-ips.js"></script>
+    <script src="chart5-usernames.js"></script>
+    <script src="chart6-asns.js"></script>
+    
+    <!-- Initialize dashboard -->
+    <script>
+        // Initialize on page load
+        initState();
+        updateFilterInfo();
+        loadAllCharts();
+    </script>
+</body>
+</html>
