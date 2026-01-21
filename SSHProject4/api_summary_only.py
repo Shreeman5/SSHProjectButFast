@@ -238,41 +238,37 @@ def get_username_attacks():
 
 @app.route('/api/asn_attacks', methods=['GET'])
 def get_asn_attacks():
-    """Chart 6: Top ASNs - derived from top_ips"""
+    """Chart 6: Top ASNs - REAL DATA with duplicate aggregation"""
     start, end = parse_date_params()
     country_filter = request.args.get('country')
     
     conn = get_db()
     
-    filters = []
-    if country_filter:
-        filters.append(f"country = '{country_filter}'")
-    
-    filter_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
-    
     query = f"""
         WITH top_asns AS (
-            SELECT asn_name, SUM(attack_count) as total_attacks
-            FROM top_ips
-            {filter_clause}
-            WHERE asn_name IS NOT NULL AND asn_name != 'Unknown'
+            SELECT asn_name
+            FROM daily_asn_attacks
             GROUP BY asn_name
-            ORDER BY total_attacks DESC
+            ORDER BY SUM(attacks) DESC
             LIMIT 10
         ),
-        date_range AS (
-            SELECT date
-            FROM daily_stats
-            WHERE date BETWEEN '{start}' AND '{end}'
+        aggregated AS (
+            SELECT 
+                d.date,
+                d.asn_name,
+                SUM(d.attacks) as attacks
+            FROM daily_asn_attacks d
+            INNER JOIN top_asns t ON d.asn_name = t.asn_name
+            WHERE d.date BETWEEN '{start}' AND '{end}'
+            GROUP BY d.date, d.asn_name
         )
         SELECT 
-            d.date::VARCHAR as date,
-            t.asn_name,
+            date::VARCHAR as date,
+            asn_name,
             'Mixed' as country,
-            CAST(t.total_attacks / 69.0 * (0.9 + 0.2 * RANDOM()) AS BIGINT) as attacks
-        FROM date_range d
-        CROSS JOIN top_asns t
-        ORDER BY d.date, t.total_attacks DESC
+            attacks
+        FROM aggregated
+        ORDER BY date, attacks DESC
     """
     
     result = conn.execute(query).fetchall()
