@@ -275,7 +275,7 @@ function renderMultiLineChart(containerId, series, options) {
             .tickFormat(d3.timeFormat('%b %d')))  // Nov 18 instead of 11/18
         .selectAll('text')
         .style('text-anchor', 'end')
-        .style('font-size', '12px')  // Increased from 9px
+        .style('font-size', '15px')  // Increased from 9px
         .attr('dx', '-.8em')
         .attr('dy', '.15em')
         .attr('transform', 'rotate(-45)');
@@ -293,7 +293,7 @@ function renderMultiLineChart(containerId, series, options) {
     
     // Increase font size for all y-axis labels
     yAxis.selectAll('text')
-        .style('font-size', '13px');
+        .style('font-size', '15px');
     
     // Make the top y-axis value much bigger
     const ticks = yAxis.selectAll('.tick');
