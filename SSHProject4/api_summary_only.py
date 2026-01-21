@@ -198,39 +198,43 @@ def get_ip_attacks():
 
 @app.route('/api/username_attacks', methods=['GET'])
 def get_username_attacks():
-    """Chart 5: Top usernames - uses username_stats"""
+    """Chart 5: Top usernames - NOW USES REAL DATA from daily_username_attacks"""
     start, end = parse_date_params()
+    country = request.args.get('country', None)
     
     conn = get_db()
     
+    # Get top 10 usernames across entire date range
+    if country:
+        # If country filter is active, we can't accurately filter usernames by country
+        # since daily_username_attacks doesn't have country data
+        # For now, just return top 10 overall
+        pass
+    
     query = f"""
         WITH top_usernames AS (
-            SELECT Username, attempt_count
-            FROM username_stats
-            ORDER BY attempt_count DESC
+            SELECT username
+            FROM daily_username_attacks
+            GROUP BY username
+            ORDER BY SUM(attacks) DESC
             LIMIT 10
-        ),
-        date_range AS (
-            SELECT date
-            FROM daily_stats
-            WHERE date BETWEEN '{start}' AND '{end}'
         )
         SELECT 
             d.date::VARCHAR as date,
-            t.Username,
+            d.username,
             'Mixed' as country,
-            CAST(t.attempt_count / 69.0 * (0.9 + 0.2 * RANDOM()) AS BIGINT) as attacks
-        FROM date_range d
-        CROSS JOIN top_usernames t
-        ORDER BY d.date, t.attempt_count DESC
+            d.attacks
+        FROM daily_username_attacks d
+        INNER JOIN top_usernames t ON d.username = t.username
+        WHERE d.date BETWEEN '{start}' AND '{end}'
+        ORDER BY d.date, d.attacks DESC
     """
     
     result = conn.execute(query).fetchall()
     conn.close()
     
-    data = [{'date': row[0], 'Username': row[1], 'country': row[2], 'attacks': row[3]} for row in result]
+    data = [{'date': row[0], 'username': row[1], 'country': row[2], 'attacks': row[3]} for row in result]
     return jsonify(data)
-
 
 @app.route('/api/asn_attacks', methods=['GET'])
 def get_asn_attacks():

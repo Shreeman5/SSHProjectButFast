@@ -323,7 +323,7 @@
             
             const data = await fetch(url).then(r => r.json());
             
-            const nested = d3.group(data, d => d.Username);
+            const nested = d3.group(data, d => d.username);  // FIXED: lowercase 'username'
             const series = Array.from(nested, ([key, values]) => ({key, values}));
             
             renderMultiLineChart('usernamechart', series, {
