@@ -452,33 +452,42 @@ function renderMultiLineChart(containerId, series, options) {
             })
             .on('contextmenu', function(event) {
                 event.preventDefault();
-                
+    
                 // Toggle crossed-out state
                 if (crossedOut.has(s.key)) {
                     // Restore
                     crossedOut.delete(s.key);
                     
-                    // Restore line
+                    // Show line and dots
                     g.selectAll(`.line[data-key="${s.key}"]`)
+                        .style('display', 'block')
                         .style('opacity', 1)
                         .attr('stroke-dasharray', 'none');
+                    
+                    g.selectAll(`[class^="dot-"][data-key="${s.key}"]`)
+                        .style('display', 'block');
                     
                     // Restore legend
                     d3.select(this).style('opacity', 1);
                     d3.select(this).select('text').style('text-decoration', 'none');
                 } else {
-                    // Cross out
+                    // Cross out = HIDE completely
                     crossedOut.add(s.key);
                     
-                    // Cross out line
+                    // Hide line and dots completely
                     g.selectAll(`.line[data-key="${s.key}"]`)
-                        .style('opacity', 0.3)
-                        .attr('stroke-dasharray', '5,5');
+                        .style('display', 'none');
+                    
+                    g.selectAll(`[class^="dot-"][data-key="${s.key}"]`)
+                        .style('display', 'none');
                     
                     // Cross out legend
                     d3.select(this).style('opacity', 0.5);
                     d3.select(this).select('text').style('text-decoration', 'line-through');
                 }
+                
+                // Rescale chart based on visible series
+                rescaleChart();  // ← ADD THIS LINE
             });
         
         legendItem.append('rect')
@@ -506,4 +515,69 @@ function renderMultiLineChart(containerId, series, options) {
             .style('user-select', 'none')
             .text(`${legendText} (${totalFormatted})`);
     });
+
+    // Function to rescale chart when series are hidden
+    function rescaleChart() {
+        // Get visible series only
+        const visibleSeries = seriesWithTotals.filter(s => !crossedOut.has(s.key));
+        
+        if (visibleSeries.length === 0) return;
+        
+        // Recalculate y-axis domain based on visible series only
+        const newYMax = d3.max(visibleSeries, s => d3.max(s.values, d => d[options.yKey]));
+        y.domain([0, newYMax]);
+        
+        // Update y-axis with new scale
+        const newTickValues = [0, newYMax * 0.25, newYMax * 0.5, newYMax * 0.75, newYMax];
+        
+        yAxis.transition().duration(500)
+            .call(d3.axisLeft(y)
+                .tickValues(newTickValues)
+                .tickFormat(d => {
+                    if (d >= 1000000) return (d / 1000000).toFixed(1) + 'M';
+                    if (d >= 1000) return (d / 1000).toFixed(0) + 'k';
+                    return d;
+                }));
+        
+        // Re-style tick labels
+        yAxis.selectAll('text').style('font-size', '15px');
+        const ticks = yAxis.selectAll('.tick');
+        const tickCount = ticks.size();
+        ticks.each(function(d, i) {
+            if (i === tickCount - 1) {
+                d3.select(this).select('text')
+                    .style('font-size', '18px')
+                    .style('font-weight', 'bold');
+            } else {
+                d3.select(this).select('text')
+                    .style('font-size', '15px')
+                    .style('font-weight', 'normal');
+            }
+        });
+        
+        // Update grid lines
+        g.select('.grid').filter(function() {
+            return d3.select(this).attr('transform') !== `translate(0,${height})`;
+        })
+        .transition().duration(500)
+        .call(d3.axisLeft(y)
+            .tickValues(newTickValues)
+            .tickSize(-width)
+            .tickFormat(''));
+        
+        // Reposition all visible lines and dots
+        seriesWithTotals.forEach((s, i) => {
+            const lineGen = d3.line()
+                .x(d => x(d.date))
+                .y(d => y(d[options.yKey]));
+            
+            g.selectAll(`.line[data-key="${s.key}"]`)
+                .transition().duration(500)
+                .attr('d', lineGen);
+            
+            g.selectAll(`[class^="dot-"][data-key="${s.key}"]`)
+                .transition().duration(500)
+                .attr('cy', d => y(d[options.yKey]));
+        });
+    }
 }

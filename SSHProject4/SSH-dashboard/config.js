@@ -29,31 +29,49 @@ function initState() {
     state.country = params.get('country') || null;
 }
 
-// Update filter info display
+
 function updateFilterInfo() {
     const filterInfo = document.getElementById('filter-info');
-    const filterText = document.getElementById('filter-text');
     
-    let filters = [];
-    if (state.startDate && state.endDate) {
-        filters.push(`Date: ${state.startDate} to ${state.endDate}`);
-    }
-    if (state.country) filters.push(`Country: ${state.country}`);
-    if (state.ip) filters.push(`IP: ${state.ip}`);
-    if (state.username) filters.push(`Username: ${state.username}`);
-    if (state.asn) filters.push(`ASN: ${state.asn}`);
+    let html = `<strong>Active Filters:</strong> `;
+    html += `Date: ${state.startDate} to ${state.endDate}`;
     
-    if (filters.length > 0) {
-        filterText.innerHTML = 'Active Filters: ' + filters.join(' | ');
-        
-        // Add "Go Back" button if there's history
-        if (state.dateRangeHistory.length > 0) {
-            filterText.innerHTML += `<button class="reset-btn" onclick="goBack()" style="margin-left: 10px;">← Go Back (${state.dateRangeHistory.length})</button>`;
-        }
-        
-        filterInfo.style.display = 'block';
+    if (state.country) html += ` | Country: ${state.country}`;
+    if (state.ip) html += ` | IP: ${state.ip}`;
+    if (state.username) html += ` | Username: ${state.username}`;
+    if (state.asn) html += ` | ASN: ${state.asn}`;
+    
+    html += ` <button onclick="resetFilters()" class="reset-btn">Reset All Filters</button>`;
+    
+    filterInfo.innerHTML = html;
+    filterInfo.style.display = 'block';
+    
+    // Update Go Back button near date chart
+    updateGoBackButton();
+    
+    // Update Restore Countries button near country chart
+    updateRestoreCountriesButton();
+}
+
+// New function to update Go Back button
+function updateGoBackButton() {
+    const goBackContainer = document.getElementById('go-back-container');
+    if (state.dateRangeHistory.length > 0) {
+        goBackContainer.innerHTML = `<button onclick="goBack()" class="filter-btn"> Go Back (${state.dateRangeHistory.length})</button>`;
+        goBackContainer.style.display = 'block';
     } else {
-        filterInfo.style.display = 'none';
+        goBackContainer.style.display = 'none';
+    }
+}
+
+// New function to update Restore Countries button
+function updateRestoreCountriesButton() {
+    const restoreContainer = document.getElementById('restore-countries-container');
+    if (state.country) {
+        restoreContainer.innerHTML = `<button onclick="restoreCountries()" class="restore-btn">Restore All Countries</button>`;
+        restoreContainer.style.display = 'inline-block';
+    } else {
+        restoreContainer.style.display = 'none';
     }
 }
 
@@ -68,6 +86,14 @@ function goBack() {
     state.startDate = previous.startDate;
     state.endDate = previous.endDate;
     
+    updateURL();
+    updateFilterInfo();
+    loadAllCharts();
+}
+
+// Restore all countries (clear country filter)
+function restoreCountries() {
+    state.country = null;
     updateURL();
     updateFilterInfo();
     loadAllCharts();

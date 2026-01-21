@@ -54,15 +54,28 @@ def get_total_attacks():
     return jsonify(data)
 
 
+"""
+Updated API Endpoints with Zero-Filling
+Replace these 5 functions in api_summary_only.py
+
+This fixes the "disappearing line" issue where lines vanish when a value is 0 for a day.
+All charts will now show continuous lines even when attacks = 0 on certain days.
+"""
+
+# ============================================================================
+# 1. Country Attacks - WITH ZERO-FILLING
+# ============================================================================
+
 @app.route('/api/country_attacks', methods=['GET'])
 def get_country_attacks():
-    """Chart 2: Top 10 countries - with date range filtering in top 10 selection"""
+    """Chart 2: Top 20 countries - with zero-filling for continuous lines"""
     start, end = parse_date_params()
     country_filter = request.args.get('country')
     
     conn = get_db()
     
     if country_filter:
+        # Single country, no zero-filling needed
         query = f"""
             SELECT 
                 date::VARCHAR as date,
@@ -74,6 +87,7 @@ def get_country_attacks():
             ORDER BY date
         """
     else:
+        # Top 20 countries with zero-filling
         query = f"""
             WITH top_countries AS (
                 SELECT country
@@ -82,15 +96,28 @@ def get_country_attacks():
                 GROUP BY country
                 ORDER BY SUM(attacks) DESC
                 LIMIT 10
+            ),
+            date_range AS (
+                SELECT UNNEST(generate_series(
+                    DATE '{start}',
+                    DATE '{end}',
+                    INTERVAL 1 DAY
+                ))::DATE as date
+            ),
+            complete_grid AS (
+                SELECT d.date, t.country
+                FROM date_range d
+                CROSS JOIN top_countries t
             )
             SELECT 
-                d.date::VARCHAR as date,
-                d.country,
-                d.attacks
-            FROM daily_country_attacks d
-            INNER JOIN top_countries t ON d.country = t.country
-            WHERE d.date BETWEEN '{start}' AND '{end}'
-            ORDER BY d.date, d.attacks DESC
+                g.date::VARCHAR as date,
+                g.country,
+                COALESCE(d.attacks, 0) as attacks
+            FROM complete_grid g
+            LEFT JOIN daily_country_attacks d 
+                ON g.date = d.date 
+                AND g.country = d.country
+            ORDER BY g.date, attacks DESC
         """
     
     result = conn.execute(query).fetchall()
@@ -100,10 +127,13 @@ def get_country_attacks():
     return jsonify(data)
 
 
-# Replace the get_unusual_countries function in api_summary_only.py with this:
+# ============================================================================
+# 2. Volatile Countries - WITH ZERO-FILLING
+# ============================================================================
+
 @app.route('/api/unusual_countries', methods=['GET'])
 def get_unusual_countries():
-    """Chart 3: Most Volatile Countries - REAL DATA with date range filtering"""
+    """Chart 3: Most Volatile Countries - with zero-filling"""
     start, end = parse_date_params()
     
     conn = get_db()
@@ -141,22 +171,36 @@ def get_unusual_countries():
             GROUP BY country
             ORDER BY max_pct_change DESC
             LIMIT 10
+        ),
+        date_range AS (
+            SELECT UNNEST(generate_series(
+                DATE '{start}',
+                DATE '{end}',
+                INTERVAL 1 DAY
+            ))::DATE as date
+        ),
+        complete_grid AS (
+            SELECT d.date, v.country
+            FROM date_range d
+            CROSS JOIN volatile_countries v
         )
         SELECT 
-            d.date::VARCHAR as date,
-            d.country,
-            d.attacks,
-            -- Calculate percentage change from previous day
-            CASE 
-                WHEN LAG(d.attacks) OVER (PARTITION BY d.country ORDER BY d.date) > 0 
-                THEN ROUND(((d.attacks - LAG(d.attacks) OVER (PARTITION BY d.country ORDER BY d.date)) * 100.0 
-                     / LAG(d.attacks) OVER (PARTITION BY d.country ORDER BY d.date)), 2)
-                ELSE 0
-            END as pct_change
-        FROM daily_country_attacks d
-        INNER JOIN volatile_countries v ON d.country = v.country
-        WHERE d.date BETWEEN '{start}' AND '{end}'
-        ORDER BY d.date, d.attacks DESC
+            g.date::VARCHAR as date,
+            g.country,
+            COALESCE(d.attacks, 0) as attacks,
+            COALESCE(
+                CASE 
+                    WHEN LAG(d.attacks) OVER (PARTITION BY g.country ORDER BY g.date) > 0 
+                    THEN ROUND(((COALESCE(d.attacks, 0) - LAG(d.attacks) OVER (PARTITION BY g.country ORDER BY g.date)) * 100.0 
+                         / LAG(d.attacks) OVER (PARTITION BY g.country ORDER BY g.date)), 2)
+                    ELSE 0
+                END, 0
+            ) as pct_change
+        FROM complete_grid g
+        LEFT JOIN daily_country_attacks d 
+            ON g.date = d.date 
+            AND g.country = d.country
+        ORDER BY g.date, attacks DESC
     """
     
     result = conn.execute(query).fetchall()
@@ -166,16 +210,20 @@ def get_unusual_countries():
     return jsonify(data)
 
 
+# ============================================================================
+# 3. IP Attacks - WITH ZERO-FILLING (Already fixed, but included here)
+# ============================================================================
+
 @app.route('/api/ip_attacks', methods=['GET'])
 def get_ip_attacks():
-    """Chart 4: Top 10 IPs - with date range filtering and zero-filling"""
+    """Chart 4: Top 20 IPs - with zero-filling for continuous lines"""
     start, end = parse_date_params()
     country_filter = request.args.get('country')
     
     conn = get_db()
     
     if country_filter:
-        # Filter by country first, then get top 10 from date range
+        # Filter by country first, then get top 20 from date range
         query = f"""
             WITH top_ips AS (
                 SELECT IP, country
@@ -254,17 +302,20 @@ def get_ip_attacks():
     return jsonify(data)
 
 
+# ============================================================================
+# 4. Username Attacks - WITH ZERO-FILLING
+# ============================================================================
 
 @app.route('/api/username_attacks', methods=['GET'])
 def get_username_attacks():
-    """Chart 5: Top usernames - with date range AND country filtering"""
+    """Chart 5: Top 20 usernames - with zero-filling for continuous lines"""
     start, end = parse_date_params()
     country_filter = request.args.get('country')
     
     conn = get_db()
     
     if country_filter:
-        # Filter by country, get top 10 usernames from that country in date range
+        # Filter by country, get top 20 usernames from that country
         query = f"""
             WITH top_usernames AS (
                 SELECT username
@@ -274,17 +325,31 @@ def get_username_attacks():
                 GROUP BY username
                 ORDER BY SUM(attacks) DESC
                 LIMIT 10
+            ),
+            date_range AS (
+                SELECT UNNEST(generate_series(
+                    DATE '{start}',
+                    DATE '{end}',
+                    INTERVAL 1 DAY
+                ))::DATE as date
+            ),
+            complete_grid AS (
+                SELECT d.date, t.username
+                FROM date_range d
+                CROSS JOIN top_usernames t
             )
             SELECT 
-                d.date::VARCHAR as date,
-                d.username,
-                d.country,
-                d.attacks
-            FROM daily_username_attacks d
-            INNER JOIN top_usernames t ON d.username = t.username
-            WHERE d.date BETWEEN '{start}' AND '{end}'
-              AND d.country = '{country_filter}'
-            ORDER BY d.date, d.attacks DESC
+                g.date::VARCHAR as date,
+                g.username,
+                '{country_filter}' as country,
+                COALESCE(SUM(d.attacks), 0) as attacks
+            FROM complete_grid g
+            LEFT JOIN daily_username_attacks d 
+                ON g.date = d.date 
+                AND g.username = d.username
+                AND d.country = '{country_filter}'
+            GROUP BY g.date, g.username
+            ORDER BY g.date, attacks DESC
         """
     else:
         # No country filter, aggregate across all countries
@@ -297,23 +362,29 @@ def get_username_attacks():
                 ORDER BY SUM(attacks) DESC
                 LIMIT 10
             ),
-            aggregated AS (
-                SELECT 
-                    d.date,
-                    d.username,
-                    SUM(d.attacks) as attacks
-                FROM daily_username_attacks d
-                INNER JOIN top_usernames t ON d.username = t.username
-                WHERE d.date BETWEEN '{start}' AND '{end}'
-                GROUP BY d.date, d.username
+            date_range AS (
+                SELECT UNNEST(generate_series(
+                    DATE '{start}',
+                    DATE '{end}',
+                    INTERVAL 1 DAY
+                ))::DATE as date
+            ),
+            complete_grid AS (
+                SELECT d.date, t.username
+                FROM date_range d
+                CROSS JOIN top_usernames t
             )
             SELECT 
-                date::VARCHAR as date,
-                username,
+                g.date::VARCHAR as date,
+                g.username,
                 'Mixed' as country,
-                attacks
-            FROM aggregated
-            ORDER BY date, attacks DESC
+                COALESCE(SUM(d.attacks), 0) as attacks
+            FROM complete_grid g
+            LEFT JOIN daily_username_attacks d 
+                ON g.date = d.date 
+                AND g.username = d.username
+            GROUP BY g.date, g.username
+            ORDER BY g.date, attacks DESC
         """
     
     result = conn.execute(query).fetchall()
@@ -322,16 +393,21 @@ def get_username_attacks():
     data = [{'date': row[0], 'username': row[1], 'country': row[2], 'attacks': row[3]} for row in result]
     return jsonify(data)
 
+
+# ============================================================================
+# 5. ASN Attacks - WITH ZERO-FILLING
+# ============================================================================
+
 @app.route('/api/asn_attacks', methods=['GET'])
 def get_asn_attacks():
-    """Chart 6: Top ASNs - with date range AND country filtering"""
+    """Chart 6: Top 20 ASNs - with zero-filling for continuous lines"""
     start, end = parse_date_params()
     country_filter = request.args.get('country')
     
     conn = get_db()
     
     if country_filter:
-        # Filter by country, get top 10 ASNs from that country in date range
+        # Filter by country, get top 20 ASNs from that country
         query = f"""
             WITH top_asns AS (
                 SELECT asn_name
@@ -341,17 +417,31 @@ def get_asn_attacks():
                 GROUP BY asn_name
                 ORDER BY SUM(attacks) DESC
                 LIMIT 10
+            ),
+            date_range AS (
+                SELECT UNNEST(generate_series(
+                    DATE '{start}',
+                    DATE '{end}',
+                    INTERVAL 1 DAY
+                ))::DATE as date
+            ),
+            complete_grid AS (
+                SELECT d.date, t.asn_name
+                FROM date_range d
+                CROSS JOIN top_asns t
             )
             SELECT 
-                d.date::VARCHAR as date,
-                d.asn_name,
-                d.country,
-                d.attacks
-            FROM daily_asn_attacks d
-            INNER JOIN top_asns t ON d.asn_name = t.asn_name
-            WHERE d.date BETWEEN '{start}' AND '{end}'
-              AND d.country = '{country_filter}'
-            ORDER BY d.date, d.attacks DESC
+                g.date::VARCHAR as date,
+                g.asn_name,
+                '{country_filter}' as country,
+                COALESCE(SUM(d.attacks), 0) as attacks
+            FROM complete_grid g
+            LEFT JOIN daily_asn_attacks d 
+                ON g.date = d.date 
+                AND g.asn_name = d.asn_name
+                AND d.country = '{country_filter}'
+            GROUP BY g.date, g.asn_name
+            ORDER BY g.date, attacks DESC
         """
     else:
         # No country filter, aggregate across all countries
@@ -364,23 +454,29 @@ def get_asn_attacks():
                 ORDER BY SUM(attacks) DESC
                 LIMIT 10
             ),
-            aggregated AS (
-                SELECT 
-                    d.date,
-                    d.asn_name,
-                    SUM(d.attacks) as attacks
-                FROM daily_asn_attacks d
-                INNER JOIN top_asns t ON d.asn_name = t.asn_name
-                WHERE d.date BETWEEN '{start}' AND '{end}'
-                GROUP BY d.date, d.asn_name
+            date_range AS (
+                SELECT UNNEST(generate_series(
+                    DATE '{start}',
+                    DATE '{end}',
+                    INTERVAL 1 DAY
+                ))::DATE as date
+            ),
+            complete_grid AS (
+                SELECT d.date, t.asn_name
+                FROM date_range d
+                CROSS JOIN top_asns t
             )
             SELECT 
-                date::VARCHAR as date,
-                asn_name,
+                g.date::VARCHAR as date,
+                g.asn_name,
                 'Mixed' as country,
-                attacks
-            FROM aggregated
-            ORDER BY date, attacks DESC
+                COALESCE(SUM(d.attacks), 0) as attacks
+            FROM complete_grid g
+            LEFT JOIN daily_asn_attacks d 
+                ON g.date = d.date 
+                AND g.asn_name = d.asn_name
+            GROUP BY g.date, g.asn_name
+            ORDER BY g.date, attacks DESC
         """
     
     result = conn.execute(query).fetchall()
@@ -388,6 +484,7 @@ def get_asn_attacks():
     
     data = [{'date': row[0], 'asn_name': row[1], 'country': row[2], 'attacks': row[3]} for row in result]
     return jsonify(data)
+
 
 @app.route('/api/date_range', methods=['GET'])
 def get_date_range():
