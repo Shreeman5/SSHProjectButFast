@@ -1,5 +1,3 @@
-// Chart 1: Total Attacks Over Time
-
 async function loadTotalAttacks() {
     let url = `${API_BASE}/total_attacks?start=${state.startDate}&end=${state.endDate}`;
     let chartData;
@@ -19,14 +17,31 @@ async function loadTotalAttacks() {
                 dateMap.set(d.date, d.attacks);
             }
         });
-        chartData = Array.from(dateMap, ([date, attacks]) => ({ date, attacks }));
         
-        // Use country-specific color matching the country chart
+        // ZERO-FILL: Generate all dates in range (parse as local dates to avoid timezone issues)
+        const startParts = state.startDate.split('-');
+        const endParts = state.endDate.split('-');
+        const start = new Date(startParts[0], startParts[1] - 1, startParts[2]);
+        const end = new Date(endParts[0], endParts[1] - 1, endParts[2]);
+        chartData = [];
+        
+        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            const dateStr = `${year}-${month}-${day}`;
+            
+            chartData.push({
+                date: dateStr,
+                attacks: dateMap.get(dateStr) || 0  // Fill missing with 0
+            });
+        }
+        
+        // Use country-specific color
         const distinctColors = [
             '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
             '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'
         ];
-        // Simple hash to pick consistent color
         const colorIndex = Math.abs(state.country.split('').reduce((a,b) => (a<<5)-a+b.charCodeAt(0),0)) % 10;
         chartColor = distinctColors[colorIndex];
     } else {
@@ -43,10 +58,8 @@ async function loadTotalAttacks() {
                 startDate: state.startDate,
                 endDate: state.endDate
             });
-            
             state.startDate = start;
             state.endDate = end;
-            
             updateURL();
             updateFilterInfo();
             loadAllCharts();

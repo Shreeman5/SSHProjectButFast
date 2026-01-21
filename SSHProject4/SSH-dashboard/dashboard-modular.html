@@ -185,6 +185,34 @@
         #restore-countries-container .restore-btn:active {
             transform: scale(0.98);
         }
+
+        /* Restore Countries Button on Volatile Chart - Match Country Chart Style */
+        #restore-countries-volatile-container {
+            display: inline-block;
+        }
+
+        #restore-countries-volatile-container .restore-btn {
+            background-color: #7c4dff;
+            color: white;
+            border: none;
+            padding: 5px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+        }
+
+        #restore-countries-volatile-container .restore-btn:hover {
+            background-color: #6a3de8;
+            transform: scale(1.05);
+            box-shadow: 0 2px 8px rgba(124, 77, 255, 0.4);
+        }
+
+        #restore-countries-volatile-container .restore-btn:active {
+            transform: scale(0.98);
+        }
     </style>
 </head>
 <body>
@@ -214,9 +242,12 @@
     </div>
     
     <div id="chart3" class="chart-container">
-        <div class="chart-title">Top 10 Most Volatile Countries</div>
-        <div class="chart-subtitle">Countries with biggest day-to-day changes | Click to filter</div>
-        <div id="unusualchart"></div>
+        <div class="chart-title" style="display: flex; align-items: center; gap: 10px;">
+            <span>Top 10 Most Volatile Countries</span>
+            <span id="restore-countries-volatile-container" style="display: none;"></span>
+        </div>
+        <div class="chart-subtitle">Hover legend to highlight | Left-click to filter | Right-click to cross out</div>
+        <div id="volatilechart"></div>
     </div>
     
     <div id="chart4" class="chart-container">

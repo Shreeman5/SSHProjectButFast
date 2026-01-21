@@ -50,10 +50,20 @@ function renderLineChart(containerId, data, options) {
             .tickSize(-height)
             .tickFormat(''));
     
+    // Calculate 5 evenly-spaced ROUNDED tick values
+    const yMax = d3.max(data, d => d[options.yKey]);
+    const yTickValues = [
+        0,
+        Math.round(yMax * 0.25),
+        Math.round(yMax * 0.5),
+        Math.round(yMax * 0.75),
+        Math.round(yMax)
+    ];
+    
     g.append('g')
         .attr('class', 'grid')
         .call(d3.axisLeft(y)
-            .ticks(5)
+            .tickValues(yTickValues)
             .tickSize(-width)
             .tickFormat(''));
     
@@ -75,8 +85,9 @@ function renderLineChart(containerId, data, options) {
     const yAxis = g.append('g')
         .attr('class', 'axis')
         .call(d3.axisLeft(y)
-            .ticks(5)
+            .tickValues(yTickValues)
             .tickFormat(d => {
+                d = Math.round(d);  // Round to integer
                 if (d >= 1000000) return (d / 1000000).toFixed(1) + 'M';
                 if (d >= 1000) return (d / 1000).toFixed(0) + 'k';
                 return d;
@@ -288,7 +299,13 @@ function renderMultiLineChart(containerId, series, options) {
             .tickFormat(''));
     
     const yMax = d3.max(seriesWithTotals, s => d3.max(s.values, d => d[options.yKey]));
-    const tickValues = [0, yMax * 0.25, yMax * 0.5, yMax * 0.75, yMax];
+    const tickValues = [
+        0,
+        Math.round(yMax * 0.25),
+        Math.round(yMax * 0.5),
+        Math.round(yMax * 0.75),
+        Math.round(yMax)
+    ];
     
     g.append('g')
         .attr('class', 'grid')
@@ -317,6 +334,7 @@ function renderMultiLineChart(containerId, series, options) {
         .call(d3.axisLeft(y)
             .tickValues(tickValues)
             .tickFormat(d => {
+                d = Math.round(d);  // Round to integer
                 if (d >= 1000000) return (d / 1000000).toFixed(1) + 'M';
                 if (d >= 1000) return (d / 1000).toFixed(0) + 'k';
                 return d;
@@ -528,12 +546,19 @@ function renderMultiLineChart(containerId, series, options) {
         y.domain([0, newYMax]);
         
         // Update y-axis with new scale
-        const newTickValues = [0, newYMax * 0.25, newYMax * 0.5, newYMax * 0.75, newYMax];
+        const newTickValues = [
+            0,
+            Math.round(newYMax * 0.25),
+            Math.round(newYMax * 0.5),
+            Math.round(newYMax * 0.75),
+            Math.round(newYMax)
+        ];
         
         yAxis.transition().duration(500)
             .call(d3.axisLeft(y)
                 .tickValues(newTickValues)
                 .tickFormat(d => {
+                    d = Math.round(d);  // Round to integer
                     if (d >= 1000000) return (d / 1000000).toFixed(1) + 'M';
                     if (d >= 1000) return (d / 1000).toFixed(0) + 'k';
                     return d;

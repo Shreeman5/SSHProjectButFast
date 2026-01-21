@@ -130,85 +130,114 @@ def get_country_attacks():
 # ============================================================================
 # 2. Volatile Countries - WITH ZERO-FILLING
 # ============================================================================
-
 @app.route('/api/unusual_countries', methods=['GET'])
 def get_unusual_countries():
-    """Chart 3: Most Volatile Countries - with zero-filling"""
+    """Chart 3: Most Volatile Countries - with zero-filling and country filter"""
     start, end = parse_date_params()
+    country_filter = request.args.get('country')  # ← ADD THIS
     
     conn = get_db()
     
-    query = f"""
-        WITH daily_data AS (
+    if country_filter:
+        # Single country - just return its data with zero-filling
+        query = f"""
+            WITH date_range AS (
+                SELECT UNNEST(generate_series(
+                    DATE '{start}',
+                    DATE '{end}',
+                    INTERVAL 1 DAY
+                ))::DATE as date
+            )
             SELECT 
-                country,
-                date,
-                attacks,
-                LAG(attacks) OVER (PARTITION BY country ORDER BY date) as prev_attacks
-            FROM daily_country_attacks
-            WHERE date BETWEEN '{start}' AND '{end}'
-              AND country != 'Unknown'
-            ORDER BY country, date
-        ),
-        pct_changes AS (
-            SELECT 
-                country,
-                date,
-                attacks,
-                prev_attacks,
-                CASE 
-                    WHEN prev_attacks > 0 THEN ((attacks - prev_attacks) * 100.0 / prev_attacks)
-                    ELSE 0 
-                END as pct_change
-            FROM daily_data
-            WHERE prev_attacks IS NOT NULL
-        ),
-        volatile_countries AS (
-            SELECT 
-                country,
-                MAX(ABS(pct_change)) as max_pct_change
-            FROM pct_changes
-            GROUP BY country
-            ORDER BY max_pct_change DESC
-            LIMIT 10
-        ),
-        date_range AS (
-            SELECT UNNEST(generate_series(
-                DATE '{start}',
-                DATE '{end}',
-                INTERVAL 1 DAY
-            ))::DATE as date
-        ),
-        complete_grid AS (
-            SELECT d.date, v.country
+                d.date::VARCHAR as date,
+                '{country_filter}' as country,
+                COALESCE(c.attacks, 0) as attacks,
+                COALESCE(
+                    CASE 
+                        WHEN LAG(c.attacks) OVER (ORDER BY d.date) > 0 
+                        THEN ROUND(((COALESCE(c.attacks, 0) - LAG(c.attacks) OVER (ORDER BY d.date)) * 100.0 
+                             / LAG(c.attacks) OVER (ORDER BY d.date)), 2)
+                        ELSE 0
+                    END, 0
+                ) as pct_change
             FROM date_range d
-            CROSS JOIN volatile_countries v
-        )
-        SELECT 
-            g.date::VARCHAR as date,
-            g.country,
-            COALESCE(d.attacks, 0) as attacks,
-            COALESCE(
-                CASE 
-                    WHEN LAG(d.attacks) OVER (PARTITION BY g.country ORDER BY g.date) > 0 
-                    THEN ROUND(((COALESCE(d.attacks, 0) - LAG(d.attacks) OVER (PARTITION BY g.country ORDER BY g.date)) * 100.0 
-                         / LAG(d.attacks) OVER (PARTITION BY g.country ORDER BY g.date)), 2)
-                    ELSE 0
-                END, 0
-            ) as pct_change
-        FROM complete_grid g
-        LEFT JOIN daily_country_attacks d 
-            ON g.date = d.date 
-            AND g.country = d.country
-        ORDER BY g.date, attacks DESC
-    """
+            LEFT JOIN daily_country_attacks c 
+                ON d.date = c.date 
+                AND c.country = '{country_filter}'
+            ORDER BY d.date
+        """
+    else:
+        # Top 20 volatile countries
+        query = f"""
+            WITH daily_data AS (
+                SELECT 
+                    country,
+                    date,
+                    attacks,
+                    LAG(attacks) OVER (PARTITION BY country ORDER BY date) as prev_attacks
+                FROM daily_country_attacks
+                WHERE date BETWEEN '{start}' AND '{end}'
+                  AND country != 'Unknown'
+                ORDER BY country, date
+            ),
+            pct_changes AS (
+                SELECT 
+                    country,
+                    date,
+                    attacks,
+                    prev_attacks,
+                    CASE 
+                        WHEN prev_attacks > 0 THEN ((attacks - prev_attacks) * 100.0 / prev_attacks)
+                        ELSE 0 
+                    END as pct_change
+                FROM daily_data
+                WHERE prev_attacks IS NOT NULL
+            ),
+            volatile_countries AS (
+                SELECT 
+                    country,
+                    MAX(ABS(pct_change)) as max_pct_change
+                FROM pct_changes
+                GROUP BY country
+                ORDER BY max_pct_change DESC
+                LIMIT 10
+            ),
+            date_range AS (
+                SELECT UNNEST(generate_series(
+                    DATE '{start}',
+                    DATE '{end}',
+                    INTERVAL 1 DAY
+                ))::DATE as date
+            ),
+            complete_grid AS (
+                SELECT d.date, v.country
+                FROM date_range d
+                CROSS JOIN volatile_countries v
+            )
+            SELECT 
+                g.date::VARCHAR as date,
+                g.country,
+                COALESCE(d.attacks, 0) as attacks,
+                COALESCE(
+                    CASE 
+                        WHEN LAG(d.attacks) OVER (PARTITION BY g.country ORDER BY g.date) > 0 
+                        THEN ROUND(((COALESCE(d.attacks, 0) - LAG(d.attacks) OVER (PARTITION BY g.country ORDER BY g.date)) * 100.0 
+                             / LAG(d.attacks) OVER (PARTITION BY g.country ORDER BY g.date)), 2)
+                        ELSE 0
+                    END, 0
+                ) as pct_change
+            FROM complete_grid g
+            LEFT JOIN daily_country_attacks d 
+                ON g.date = d.date 
+                AND g.country = d.country
+            ORDER BY g.date, attacks DESC
+        """
     
     result = conn.execute(query).fetchall()
     conn.close()
     
     data = [{'date': row[0], 'country': row[1], 'attacks': row[2], 'pct_change': row[3]} for row in result]
     return jsonify(data)
-
 
 # ============================================================================
 # 3. IP Attacks - WITH ZERO-FILLING (Already fixed, but included here)
