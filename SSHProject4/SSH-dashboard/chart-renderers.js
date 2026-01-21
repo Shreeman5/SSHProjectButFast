@@ -148,9 +148,6 @@ function renderLineChart(containerId, data, options) {
     if (tooltip.empty()) {
         tooltip = d3.select('body').append('div').attr('class', 'tooltip');
     }
-
-    // Pre-declare legendG for right-click handler
-    let legendG = null;
     
     // Add larger invisible hit areas
     g.selectAll('.dot-hitarea')
@@ -243,9 +240,8 @@ function renderMultiLineChart(containerId, series, options) {
         .domain(seriesWithTotals.map(s => s.key))
         .range(distinctColors);
     
-    // Adjusted height for top legend
-    const isCountryChart = containerId === 'countrychart';
-    const legendHeight = isCountryChart ? 70 : 0;
+    // Always give space for top legend (FIXED: was only for country chart)
+    const legendHeight = 70;
     
     const svg = container.append('svg')
         .attr('width', CHART_WIDTH)
@@ -349,14 +345,17 @@ function renderMultiLineChart(containerId, series, options) {
         .x(d => x(d.date))
         .y(d => y(d[options.yKey]));
     
-    // Track crossed-out countries
+    // Track crossed-out items
     const crossedOut = new Set();
     
-    // Draw lines
+    // Pre-declare legendG for reference in event handlers
+    let legendG = null;
+    
+    // Draw lines (simple, no click handlers on lines)
     seriesWithTotals.forEach((s, i) => {
         const lineColor = countryColor(s.key);
         
-        const linePath = g.append('path')
+        g.append('path')
             .datum(s.values)
             .attr('class', `line line-${i}`)
             .attr('data-key', s.key)
@@ -365,30 +364,6 @@ function renderMultiLineChart(containerId, series, options) {
             .attr('stroke-width', 2)
             .attr('fill', 'none')
             .style('cursor', 'default')
-            .on('contextmenu', function(event) {
-                event.preventDefault();
-                
-                const legendItem = legendG.selectAll('.legend-item')
-                    .filter(function() { return d3.select(this).attr('data-key') === s.key; });
-                
-                if (crossedOut.has(s.key)) {
-                    // Restore
-                    crossedOut.delete(s.key);
-                    d3.select(this)
-                        .style('opacity', 1)
-                        .attr('stroke-dasharray', 'none');
-                    legendItem.select('text').style('text-decoration', 'none');
-                    legendItem.style('opacity', 1);
-                } else {
-                    // Cross out
-                    crossedOut.add(s.key);
-                    d3.select(this)
-                        .style('opacity', 0.3)
-                        .attr('stroke-dasharray', '5,5');
-                    legendItem.select('text').style('text-decoration', 'line-through');
-                    legendItem.style('opacity', 0.5);
-                }
-            })
             .on('mouseover', function() {
                 if (!crossedOut.has(s.key)) {
                     d3.select(this).attr('stroke-width', 4);
@@ -398,11 +373,12 @@ function renderMultiLineChart(containerId, series, options) {
                 d3.select(this).attr('stroke-width', 2);
             });
         
-        // Dots
-         g.selectAll(`.dot-${i}`)
+        // Dots with tooltip
+        g.selectAll(`.dot-${i}`)
             .data(s.values)
             .enter().append('circle')
             .attr('class', `dot-${i}`)
+            .attr('data-key', s.key)
             .attr('cx', d => x(d.date))
             .attr('cy', d => y(d[options.yKey]))
             .attr('r', 2.5)
@@ -429,87 +405,105 @@ function renderMultiLineChart(containerId, series, options) {
             });
     });
     
-    // TOP LEGEND (for country chart only)
-    if (true) {
-        legendG = svg.append('g')
-            .attr('transform', `translate(${MARGIN.left}, 10)`);
+    // TOP LEGEND (5×2 grid for all charts)
+    legendG = svg.append('g')
+        .attr('transform', `translate(${MARGIN.left}, 10)`);
+    
+    const cols = 5;
+    const cellWidth = width / cols;
+    
+    seriesWithTotals.forEach((s, i) => {
+        const row = Math.floor(i / cols);
+        const col = i % cols;
         
-        const cols = 5;
-        const cellWidth = width / cols;
-        
-        seriesWithTotals.forEach((s, i) => {
-            const row = Math.floor(i / cols);
-            const col = i % cols;
-            
-            const legendItem = legendG.append('g')
-                .attr('transform', `translate(${col * cellWidth}, ${row * 30})`)
-                .attr('class', 'legend-item')
-                .attr('data-key', s.key)
-                .style('cursor', 'pointer')
-                .on('mouseover', function() {
-                    // Highlight this line
-                    g.selectAll('.line').style('opacity', 0.1);
+        const legendItem = legendG.append('g')
+            .attr('transform', `translate(${col * cellWidth}, ${row * 30})`)
+            .attr('class', 'legend-item')
+            .attr('data-key', s.key)
+            .style('cursor', 'pointer')
+            .on('mouseover', function() {
+                // Highlight this line
+                g.selectAll('.line').style('opacity', 0.1);
+                g.selectAll(`.line[data-key="${s.key}"]`)
+                    .style('opacity', 1)
+                    .attr('stroke-width', 4);
+                
+                d3.select(this).select('rect')
+                    .attr('stroke', '#000')
+                    .attr('stroke-width', 2);
+            })
+            .on('mouseout', function() {
+                // Restore all lines (check if crossed out)
+                g.selectAll('.line').each(function() {
+                    const key = d3.select(this).attr('data-key');
+                    d3.select(this)
+                        .style('opacity', crossedOut.has(key) ? 0.3 : 1)
+                        .attr('stroke-width', 2);
+                });
+                
+                d3.select(this).select('rect')
+                    .attr('stroke', 'none');
+            })
+            .on('click', function(event) {
+                if (options.onClick) {
+                    event.preventDefault();
+                    options.onClick(s.key);
+                }
+            })
+            .on('contextmenu', function(event) {
+                event.preventDefault();
+                
+                // Toggle crossed-out state
+                if (crossedOut.has(s.key)) {
+                    // Restore
+                    crossedOut.delete(s.key);
+                    
+                    // Restore line
                     g.selectAll(`.line[data-key="${s.key}"]`)
                         .style('opacity', 1)
-                        .attr('stroke-width', 4);
+                        .attr('stroke-dasharray', 'none');
                     
-                    d3.select(this).select('rect')
-                        .attr('stroke', '#000')
-                        .attr('stroke-width', 2);
-                })
-                .on('mouseout', function() {
-                    g.selectAll('.line')
-                        .style('opacity', d => crossedOut.has(d3.select(this).attr('data-key')) ? 0.3 : 1)
-                        .attr('stroke-width', 2);
+                    // Restore legend
+                    d3.select(this).style('opacity', 1);
+                    d3.select(this).select('text').style('text-decoration', 'none');
+                } else {
+                    // Cross out
+                    crossedOut.add(s.key);
                     
-                    d3.select(this).select('rect')
-                        .attr('stroke', 'none');
-                })
-                .on('click', function(event) {
-                    if (options.onClick) {
-                        event.preventDefault();
-                        options.onClick(s.key);
-                    }
-                });
-            
-            legendItem.append('rect')
-                .attr('width', 18)
-                .attr('height', 18)
-                .attr('fill', countryColor(s.key))
-                .attr('stroke', 'none');
-            
-            legendItem.append('text')
-                .attr('x', 24)
-                .attr('y', 13)
-                .attr('font-size', '13px')
-                .style('user-select', 'none')
-                .text(s.key.length > 16 ? s.key.substring(0, 14) + '..' : s.key);
-        });
-    } else {
-        // Regular right-side legend for other charts
-        const legend = g.append('g')
-            .attr('transform', `translate(${width + 10}, 0)`);
+                    // Cross out line
+                    g.selectAll(`.line[data-key="${s.key}"]`)
+                        .style('opacity', 0.3)
+                        .attr('stroke-dasharray', '5,5');
+                    
+                    // Cross out legend
+                    d3.select(this).style('opacity', 0.5);
+                    d3.select(this).select('text').style('text-decoration', 'line-through');
+                }
+            });
         
-        seriesWithTotals.forEach((s, i) => {
-            const legendRow = legend.append('g')
-                .attr('transform', `translate(0, ${i * 20})`)
-                .style('cursor', options.onClick ? 'pointer' : 'default')
-                .on('click', function() {
-                    if (options.onClick) {
-                        options.onClick(s.key);
-                    }
-                });
-            
-            legendRow.append('rect')
-                .attr('width', 15)
-                .attr('height', 15)
-                .attr('fill', countryColor(s.key));
-            
-            legendRow.append('text')
-                .attr('x', 20)
-                .attr('y', 12)
-                .attr('font-size', '11px')
-                .text(s.key.substring(0, 20));
-        });
-    }
+        legendItem.append('rect')
+            .attr('width', 18)
+            .attr('height', 18)
+            .attr('fill', countryColor(s.key))
+            .attr('stroke', 'none');
+        
+        // Format total attacks for display
+        const totalFormatted = s.total >= 1000000 
+            ? (s.total / 1000000).toFixed(1) + 'M'
+            : s.total >= 1000 
+            ? (s.total / 1000).toFixed(0) + 'k'
+            : s.total.toLocaleString();
+        
+        // Show name + total attacks in legend
+        const legendText = s.key.length > 12 
+            ? s.key.substring(0, 10) + '..' 
+            : s.key;
+        
+        legendItem.append('text')
+            .attr('x', 24)
+            .attr('y', 13)
+            .attr('font-size', '12px')
+            .style('user-select', 'none')
+            .text(`${legendText} (${totalFormatted})`);
+    });
 }
