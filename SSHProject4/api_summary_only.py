@@ -100,34 +100,63 @@ def get_country_attacks():
     return jsonify(data)
 
 
+# Replace the get_unusual_countries function in api_summary_only.py with this:
+
 @app.route('/api/unusual_countries', methods=['GET'])
 def get_unusual_countries():
-    """Chart 3: Volatile countries - uses country_stats"""
+    """Chart 3: Most Volatile Countries - REAL DATA based on max day-to-day percentage change"""
     start, end = parse_date_params()
     
     conn = get_db()
     
     query = f"""
-        WITH volatile_countries AS (
-            SELECT country, total_attacks
-            FROM country_stats
+        WITH daily_data AS (
+            SELECT 
+                country,
+                date,
+                attacks,
+                LAG(attacks) OVER (PARTITION BY country ORDER BY date) as prev_attacks
+            FROM daily_country_attacks
             WHERE country != 'Unknown'
-            ORDER BY total_attacks DESC
-            LIMIT 5, 10
+            ORDER BY country, date
         ),
-        date_range AS (
-            SELECT date
-            FROM daily_stats
-            WHERE date BETWEEN '{start}' AND '{end}'
+        pct_changes AS (
+            SELECT 
+                country,
+                date,
+                attacks,
+                prev_attacks,
+                CASE 
+                    WHEN prev_attacks > 0 THEN ((attacks - prev_attacks) * 100.0 / prev_attacks)
+                    ELSE 0 
+                END as pct_change
+            FROM daily_data
+            WHERE prev_attacks IS NOT NULL
+        ),
+        volatile_countries AS (
+            SELECT 
+                country,
+                MAX(ABS(pct_change)) as max_pct_change
+            FROM pct_changes
+            GROUP BY country
+            ORDER BY max_pct_change DESC
+            LIMIT 10
         )
         SELECT 
             d.date::VARCHAR as date,
-            c.country,
-            CAST(c.total_attacks / 69.0 * (0.8 + 0.4 * RANDOM()) AS BIGINT) as attacks,
-            ROUND((RANDOM() - 0.5) * 100, 2) as pct_change
-        FROM date_range d
-        CROSS JOIN volatile_countries c
-        ORDER BY d.date
+            d.country,
+            d.attacks,
+            -- Calculate percentage change from previous day
+            CASE 
+                WHEN LAG(d.attacks) OVER (PARTITION BY d.country ORDER BY d.date) > 0 
+                THEN ROUND(((d.attacks - LAG(d.attacks) OVER (PARTITION BY d.country ORDER BY d.date)) * 100.0 
+                     / LAG(d.attacks) OVER (PARTITION BY d.country ORDER BY d.date)), 2)
+                ELSE 0
+            END as pct_change
+        FROM daily_country_attacks d
+        INNER JOIN volatile_countries v ON d.country = v.country
+        WHERE d.date BETWEEN '{start}' AND '{end}'
+        ORDER BY d.date, d.attacks DESC
     """
     
     result = conn.execute(query).fetchall()
@@ -136,10 +165,9 @@ def get_unusual_countries():
     data = [{'date': row[0], 'country': row[1], 'attacks': row[2], 'pct_change': row[3]} for row in result]
     return jsonify(data)
 
-
 @app.route('/api/ip_attacks', methods=['GET'])
 def get_ip_attacks():
-    """Chart 4: Top IPs - uses daily_ip_attacks with real daily data"""
+    """Chart 4: Top 10 IPs - with zero-filling for missing dates"""
     start, end = parse_date_params()
     country_filter = request.args.get('country')
     
@@ -148,45 +176,74 @@ def get_ip_attacks():
     if country_filter:
         # Filter by country first
         query = f"""
-            WITH top_ips_filtered AS (
-                SELECT IP
+            WITH top_ips AS (
+                SELECT IP, country
                 FROM daily_ip_attacks
                 WHERE date BETWEEN '{start}' AND '{end}'
                   AND country = '{country_filter}'
-                GROUP BY IP
+                GROUP BY IP, country
                 ORDER BY SUM(attacks) DESC
                 LIMIT 10
+            ),
+            date_range AS (
+                SELECT UNNEST(generate_series(
+                    DATE '{start}',
+                    DATE '{end}',
+                    INTERVAL 1 DAY
+                ))::DATE as date
+            ),
+            complete_grid AS (
+                SELECT d.date, t.IP, t.country
+                FROM date_range d
+                CROSS JOIN top_ips t
             )
             SELECT 
-                d.date::VARCHAR as date,
-                d.IP,
-                d.country,
-                d.attacks
-            FROM daily_ip_attacks d
-            INNER JOIN top_ips_filtered t ON d.IP = t.IP
-            WHERE d.date BETWEEN '{start}' AND '{end}'
-              AND d.country = '{country_filter}'
-            ORDER BY d.date, d.attacks DESC
+                g.date::VARCHAR as date,
+                g.IP,
+                g.country,
+                COALESCE(SUM(d.attacks), 0) as attacks
+            FROM complete_grid g
+            LEFT JOIN daily_ip_attacks d 
+                ON g.date = d.date 
+                AND g.IP = d.IP 
+                AND g.country = d.country
+            GROUP BY g.date, g.IP, g.country
+            ORDER BY g.date, attacks DESC
         """
     else:
         query = f"""
             WITH top_ips AS (
-                SELECT IP
+                SELECT IP, country
                 FROM daily_ip_attacks
                 WHERE date BETWEEN '{start}' AND '{end}'
-                GROUP BY IP
+                GROUP BY IP, country
                 ORDER BY SUM(attacks) DESC
                 LIMIT 10
+            ),
+            date_range AS (
+                SELECT UNNEST(generate_series(
+                    DATE '{start}',
+                    DATE '{end}',
+                    INTERVAL 1 DAY
+                ))::DATE as date
+            ),
+            complete_grid AS (
+                SELECT d.date, t.IP, t.country
+                FROM date_range d
+                CROSS JOIN top_ips t
             )
             SELECT 
-                d.date::VARCHAR as date,
-                d.IP,
-                d.country,
-                d.attacks
-            FROM daily_ip_attacks d
-            INNER JOIN top_ips t ON d.IP = t.IP
-            WHERE d.date BETWEEN '{start}' AND '{end}'
-            ORDER BY d.date, d.attacks DESC
+                g.date::VARCHAR as date,
+                g.IP,
+                g.country,
+                COALESCE(SUM(d.attacks), 0) as attacks
+            FROM complete_grid g
+            LEFT JOIN daily_ip_attacks d 
+                ON g.date = d.date 
+                AND g.IP = d.IP 
+                AND g.country = d.country
+            GROUP BY g.date, g.IP, g.country
+            ORDER BY g.date, attacks DESC
         """
     
     result = conn.execute(query).fetchall()
@@ -194,7 +251,6 @@ def get_ip_attacks():
     
     data = [{'date': row[0], 'IP': row[1], 'country': row[2], 'attacks': row[3]} for row in result]
     return jsonify(data)
-
 
 @app.route('/api/username_attacks', methods=['GET'])
 def get_username_attacks():
