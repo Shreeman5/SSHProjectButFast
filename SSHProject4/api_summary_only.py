@@ -56,7 +56,7 @@ def get_total_attacks():
 
 @app.route('/api/country_attacks', methods=['GET'])
 def get_country_attacks():
-    """Chart 2: Top 10 countries - uses daily_country_attacks with real daily data"""
+    """Chart 2: Top 10 countries - with date range filtering in top 10 selection"""
     start, end = parse_date_params()
     country_filter = request.args.get('country')
     
@@ -101,10 +101,9 @@ def get_country_attacks():
 
 
 # Replace the get_unusual_countries function in api_summary_only.py with this:
-
 @app.route('/api/unusual_countries', methods=['GET'])
 def get_unusual_countries():
-    """Chart 3: Most Volatile Countries - REAL DATA based on max day-to-day percentage change"""
+    """Chart 3: Most Volatile Countries - REAL DATA with date range filtering"""
     start, end = parse_date_params()
     
     conn = get_db()
@@ -117,7 +116,8 @@ def get_unusual_countries():
                 attacks,
                 LAG(attacks) OVER (PARTITION BY country ORDER BY date) as prev_attacks
             FROM daily_country_attacks
-            WHERE country != 'Unknown'
+            WHERE date BETWEEN '{start}' AND '{end}'
+              AND country != 'Unknown'
             ORDER BY country, date
         ),
         pct_changes AS (
@@ -165,16 +165,17 @@ def get_unusual_countries():
     data = [{'date': row[0], 'country': row[1], 'attacks': row[2], 'pct_change': row[3]} for row in result]
     return jsonify(data)
 
+
 @app.route('/api/ip_attacks', methods=['GET'])
 def get_ip_attacks():
-    """Chart 4: Top 10 IPs - with zero-filling for missing dates"""
+    """Chart 4: Top 10 IPs - with date range filtering and zero-filling"""
     start, end = parse_date_params()
     country_filter = request.args.get('country')
     
     conn = get_db()
     
     if country_filter:
-        # Filter by country first
+        # Filter by country first, then get top 10 from date range
         query = f"""
             WITH top_ips AS (
                 SELECT IP, country
@@ -252,25 +253,23 @@ def get_ip_attacks():
     data = [{'date': row[0], 'IP': row[1], 'country': row[2], 'attacks': row[3]} for row in result]
     return jsonify(data)
 
+
 @app.route('/api/username_attacks', methods=['GET'])
 def get_username_attacks():
-    """Chart 5: Top usernames - NOW USES REAL DATA from daily_username_attacks"""
+    """Chart 5: Top usernames - with date range filtering in top 10 selection"""
     start, end = parse_date_params()
-    country = request.args.get('country', None)
+    country_filter = request.args.get('country')
     
     conn = get_db()
     
-    # Get top 10 usernames across entire date range
-    if country:
-        # If country filter is active, we can't accurately filter usernames by country
-        # since daily_username_attacks doesn't have country data
-        # For now, just return top 10 overall
-        pass
+    # Note: daily_username_attacks doesn't have country data,
+    # so country filter is ignored for now
     
     query = f"""
         WITH top_usernames AS (
             SELECT username
             FROM daily_username_attacks
+            WHERE date BETWEEN '{start}' AND '{end}'
             GROUP BY username
             ORDER BY SUM(attacks) DESC
             LIMIT 10
@@ -292,18 +291,27 @@ def get_username_attacks():
     data = [{'date': row[0], 'username': row[1], 'country': row[2], 'attacks': row[3]} for row in result]
     return jsonify(data)
 
+
+
 @app.route('/api/asn_attacks', methods=['GET'])
 def get_asn_attacks():
-    """Chart 6: Top ASNs - REAL DATA with duplicate aggregation"""
+    """Chart 6: Top ASNs - REAL DATA with date range filtering"""
     start, end = parse_date_params()
     country_filter = request.args.get('country')
     
     conn = get_db()
     
+    if country_filter:
+        # If country filter is active, we can't accurately filter ASNs by country
+        # since daily_asn_attacks doesn't have country data
+        # For now, just return top 10 overall from date range
+        pass
+    
     query = f"""
         WITH top_asns AS (
             SELECT asn_name
             FROM daily_asn_attacks
+            WHERE date BETWEEN '{start}' AND '{end}'
             GROUP BY asn_name
             ORDER BY SUM(attacks) DESC
             LIMIT 10
@@ -332,6 +340,7 @@ def get_asn_attacks():
     
     data = [{'date': row[0], 'asn_name': row[1], 'country': row[2], 'attacks': row[3]} for row in result]
     return jsonify(data)
+
 
 
 @app.route('/api/date_range', methods=['GET'])

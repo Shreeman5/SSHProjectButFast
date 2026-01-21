@@ -2,9 +2,9 @@
 
 // Configuration
 const API_BASE = 'http://localhost:5000/api';
-const CHART_WIDTH = 1800;
+const CHART_WIDTH = 1800;  // Increased from 1800 to fill more screen space
 const CHART_HEIGHT = 370;
-const MARGIN = {top: 20, right: 120, bottom: 90, left: 80};
+const MARGIN = {top: 20, right: 40, bottom: 50, left: 50};
 
 // Global state
 let state = {
@@ -13,7 +13,8 @@ let state = {
     country: null,
     ip: null,
     username: null,
-    asn: null
+    asn: null,
+    dateRangeHistory: []  // Stack of previous date ranges
 };
 
 // Color scale
@@ -42,11 +43,33 @@ function updateFilterInfo() {
     if (state.asn) filters.push(`ASN: ${state.asn}`);
     
     if (filters.length > 0) {
-        filterText.textContent = 'Active Filters: ' + filters.join(' | ');
+        filterText.innerHTML = 'Active Filters: ' + filters.join(' | ');
+        
+        // Add "Go Back" button if there's history
+        if (state.dateRangeHistory.length > 0) {
+            filterText.innerHTML += `<button class="reset-btn" onclick="goBack()" style="margin-left: 10px;">← Go Back (${state.dateRangeHistory.length})</button>`;
+        }
+        
         filterInfo.style.display = 'block';
     } else {
         filterInfo.style.display = 'none';
     }
+}
+
+// Go back to previous date range
+function goBack() {
+    if (state.dateRangeHistory.length === 0) return;
+    
+    // Pop the last date range from history
+    const previous = state.dateRangeHistory.pop();
+    
+    // Restore it (without adding to history again)
+    state.startDate = previous.startDate;
+    state.endDate = previous.endDate;
+    
+    updateURL();
+    updateFilterInfo();
+    loadAllCharts();
 }
 
 // Reset all filters
@@ -57,6 +80,7 @@ function resetFilters() {
     state.ip = null;
     state.username = null;
     state.asn = null;
+    state.dateRangeHistory = [];  // Clear history
     
     updateURL();
     updateFilterInfo();

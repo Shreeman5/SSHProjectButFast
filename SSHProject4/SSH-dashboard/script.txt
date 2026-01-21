@@ -1,0 +1,115 @@
+python3 << 'EOF'
+import duckdb
+
+conn = duckdb.connect('./attack_data.db', read_only=True)
+
+START_DATE = '2022-11-10'
+END_DATE = '2022-12-01'
+
+print("="*70)
+print(f"Top 10 Analysis: {START_DATE} to {END_DATE}")
+print("="*70)
+
+# 1. Top 10 Countries
+print("\n1️⃣  TOP 10 COUNTRIES (Nov 15 - Dec 15):")
+print("-"*70)
+countries = conn.execute(f"""
+    SELECT country, SUM(attacks) as total_attacks
+    FROM daily_country_attacks
+    WHERE date BETWEEN '{START_DATE}' AND '{END_DATE}'
+    GROUP BY country
+    ORDER BY total_attacks DESC
+    LIMIT 10
+""").fetchall()
+
+for i, (country, attacks) in enumerate(countries, 1):
+    print(f"{i:2d}. {country[:35]:35s} {attacks:>15,}")
+
+# 2. Top 10 Volatile Countries
+print(f"\n2️⃣  TOP 10 VOLATILE COUNTRIES (Nov 15 - Dec 15):")
+print("-"*70)
+volatile = conn.execute(f"""
+    WITH daily_data AS (
+        SELECT 
+            country,
+            date,
+            attacks,
+            LAG(attacks) OVER (PARTITION BY country ORDER BY date) as prev_attacks
+        FROM daily_country_attacks
+        WHERE date BETWEEN '{START_DATE}' AND '{END_DATE}'
+          AND country != 'Unknown'
+    ),
+    pct_changes AS (
+        SELECT 
+            country,
+            CASE 
+                WHEN prev_attacks > 0 THEN ABS((attacks - prev_attacks) * 100.0 / prev_attacks)
+                ELSE 0 
+            END as pct_change
+        FROM daily_data
+        WHERE prev_attacks IS NOT NULL
+    )
+    SELECT 
+        country,
+        MAX(pct_change) as max_pct_change
+    FROM pct_changes
+    GROUP BY country
+    ORDER BY max_pct_change DESC
+    LIMIT 10
+""").fetchall()
+
+for i, (country, max_pct) in enumerate(volatile, 1):
+    print(f"{i:2d}. {country[:35]:35s} {max_pct:>13,.1f}%")
+
+# 3. Top 10 IPs
+print(f"\n3️⃣  TOP 10 IPS (Nov 15 - Dec 15):")
+print("-"*70)
+ips = conn.execute(f"""
+    SELECT IP, SUM(attacks) as total_attacks
+    FROM daily_ip_attacks
+    WHERE date BETWEEN '{START_DATE}' AND '{END_DATE}'
+    GROUP BY IP
+    ORDER BY total_attacks DESC
+    LIMIT 10
+""").fetchall()
+
+for i, (ip, attacks) in enumerate(ips, 1):
+    print(f"{i:2d}. {ip:35s} {attacks:>15,}")
+
+# 4. Top 10 Usernames
+print(f"\n4️⃣  TOP 10 USERNAMES (Nov 15 - Dec 15):")
+print("-"*70)
+usernames = conn.execute(f"""
+    SELECT username, SUM(attacks) as total_attacks
+    FROM daily_username_attacks
+    WHERE date BETWEEN '{START_DATE}' AND '{END_DATE}'
+    GROUP BY username
+    ORDER BY total_attacks DESC
+    LIMIT 10
+""").fetchall()
+
+for i, (username, attacks) in enumerate(usernames, 1):
+    print(f"{i:2d}. {username[:35]:35s} {attacks:>15,}")
+
+# 5. Top 10 ASNs
+print(f"\n5️⃣  TOP 10 ASNS (Nov 15 - Dec 15):")
+print("-"*70)
+asns = conn.execute(f"""
+    SELECT asn_name, SUM(attacks) as total_attacks
+    FROM daily_asn_attacks
+    WHERE date BETWEEN '{START_DATE}' AND '{END_DATE}'
+    GROUP BY asn_name
+    ORDER BY total_attacks DESC
+    LIMIT 10
+""").fetchall()
+
+for i, (asn_name, attacks) in enumerate(asns, 1):
+    print(f"{i:2d}. {asn_name[:35]:35s} {attacks:>15,}")
+
+conn.close()
+
+print("\n" + "="*70)
+print("✅ Now brush your dashboard from Nov 15 to Dec 15")
+print("   Compare the legends to see if they match!")
+print("="*70)
+EOF

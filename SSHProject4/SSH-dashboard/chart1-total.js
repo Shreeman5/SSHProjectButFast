@@ -10,8 +10,16 @@ async function loadTotalAttacks() {
         color: '#7c4dff', // Purple color
         enableBrush: true,
         onBrush: (start, end) => {
+            // Save current range to history before changing
+            state.dateRangeHistory.push({
+                startDate: state.startDate,
+                endDate: state.endDate
+            });
+            
+            // Apply new range
             state.startDate = start;
             state.endDate = end;
+            
             updateURL();
             updateFilterInfo();
             loadAllCharts();

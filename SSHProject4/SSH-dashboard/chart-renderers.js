@@ -38,12 +38,15 @@ function renderLineChart(containerId, data, options) {
         .domain([0, d3.max(data, d => d[options.yKey])])
         .range([height, 0]);
     
-    // Add grid lines
+    // Extract actual dates for exact tick placement
+    const actualDates = data.map(d => d.date);
+    
+    // Add grid lines - use tickValues to force exact dates
     g.append('g')
         .attr('class', 'grid')
         .attr('transform', `translate(0,${height})`)
         .call(d3.axisBottom(x)
-            .ticks(data.length)
+            .tickValues(actualDates)
             .tickSize(-height)
             .tickFormat(''));
     
@@ -54,26 +57,45 @@ function renderLineChart(containerId, data, options) {
             .tickSize(-width)
             .tickFormat(''));
     
-    // X-axis with all dates, rotated labels, smaller font
+    // X-axis with all dates, rotated labels, LARGER font, human-readable format
     g.append('g')
         .attr('class', 'axis')
         .attr('transform', `translate(0,${height})`)
         .call(d3.axisBottom(x)
-            .ticks(data.length)
-            .tickFormat(d3.timeFormat('%m/%d')))
+            .tickValues(actualDates)
+            .tickFormat(d3.timeFormat('%b %d')))  // Nov 18 instead of 11/18
         .selectAll('text')
         .style('text-anchor', 'end')
-        .style('font-size', '9px')
+        .style('font-size', '15px')  // Increased from 9px
         .attr('dx', '-.8em')
         .attr('dy', '.15em')
         .attr('transform', 'rotate(-45)');
     
-    // Y-axis
-    g.append('g')
+    // Y-axis with human-readable format (8k instead of 8000) and larger font
+    const yAxis = g.append('g')
         .attr('class', 'axis')
         .call(d3.axisLeft(y)
             .ticks(5)
-            .tickFormat(d => d.toLocaleString()));
+            .tickFormat(d => {
+                if (d >= 1000000) return (d / 1000000).toFixed(1) + 'M';
+                if (d >= 1000) return (d / 1000).toFixed(0) + 'k';
+                return d;
+            }));
+    
+    // Increase font size for all y-axis labels
+    yAxis.selectAll('text')
+        .style('font-size', '15px');
+    
+    // Make the top y-axis value much bigger
+    const ticks = yAxis.selectAll('.tick');
+    const tickCount = ticks.size();
+    ticks.each(function(d, i) {
+        if (i === tickCount - 1) {  // Last tick (top value)
+            d3.select(this).select('text')
+                .style('font-size', '18px')
+                .style('font-weight', 'bold');
+        }
+    });
     
     // Line
     const line = d3.line()
@@ -86,8 +108,8 @@ function renderLineChart(containerId, data, options) {
         .attr('d', line)
         .attr('stroke', options.color || '#7c4dff');
     
-    // Add brush BEFORE dots so dots are on top
-    if (options.enableBrush) {
+    // Add brush BEFORE dots so dots are on top (only if more than 2 dates)
+    if (options.enableBrush && data.length > 2) {
         const brush = d3.brushX()
             .extent([[0, 0], [width, height]])
             .on('end', brushed);
@@ -110,6 +132,15 @@ function renderLineChart(containerId, data, options) {
             console.log('Brushed date range:', start, 'to', end);
             options.onBrush(start, end);
         }
+    } else if (options.enableBrush && data.length <= 2) {
+        // Show visual indicator that brushing is disabled
+        g.append('text')
+            .attr('x', width / 2)
+            .attr('y', -5)
+            .attr('text-anchor', 'middle')
+            .attr('font-size', '11px')
+            .attr('fill', '#999')
+            .text('(Brushing disabled - minimum date range reached)');
     }
     
     // Create or reuse tooltip
@@ -215,12 +246,16 @@ function renderMultiLineChart(containerId, series, options) {
         .domain([0, d3.max(series, s => d3.max(s.values, d => d[options.yKey]))])
         .range([height, 0]);
     
-    // Add grid lines
+    // Extract all unique dates for exact tick placement
+    const allDates = [...new Set(series.flatMap(s => s.values.map(v => v.date.getTime())))].sort();
+    const actualDates = allDates.map(t => new Date(t));
+    
+    // Add grid lines - use tickValues to force exact dates
     g.append('g')
         .attr('class', 'grid')
         .attr('transform', `translate(0,${height})`)
         .call(d3.axisBottom(x)
-            .ticks(d3.max(series, s => s.values.length))
+            .tickValues(actualDates)
             .tickSize(-height)
             .tickFormat(''));
     
@@ -231,26 +266,45 @@ function renderMultiLineChart(containerId, series, options) {
             .tickSize(-width)
             .tickFormat(''));
     
-    // X-axis with all dates, rotated labels, smaller font
+    // X-axis with all dates, rotated labels, LARGER font, human-readable format
     g.append('g')
         .attr('class', 'axis')
         .attr('transform', `translate(0,${height})`)
         .call(d3.axisBottom(x)
-            .ticks(d3.max(series, s => s.values.length))
-            .tickFormat(d3.timeFormat('%m/%d')))
+            .tickValues(actualDates)
+            .tickFormat(d3.timeFormat('%b %d')))  // Nov 18 instead of 11/18
         .selectAll('text')
         .style('text-anchor', 'end')
-        .style('font-size', '9px')
+        .style('font-size', '12px')  // Increased from 9px
         .attr('dx', '-.8em')
         .attr('dy', '.15em')
         .attr('transform', 'rotate(-45)');
     
-    // Y-axis
-    g.append('g')
+    // Y-axis with human-readable format (8k instead of 8000) and larger font
+    const yAxis = g.append('g')
         .attr('class', 'axis')
         .call(d3.axisLeft(y)
             .ticks(5)
-            .tickFormat(d => d.toLocaleString()));
+            .tickFormat(d => {
+                if (d >= 1000000) return (d / 1000000).toFixed(1) + 'M';
+                if (d >= 1000) return (d / 1000).toFixed(0) + 'k';
+                return d;
+            }));
+    
+    // Increase font size for all y-axis labels
+    yAxis.selectAll('text')
+        .style('font-size', '13px');
+    
+    // Make the top y-axis value much bigger
+    const ticks = yAxis.selectAll('.tick');
+    const tickCount = ticks.size();
+    ticks.each(function(d, i) {
+        if (i === tickCount - 1) {  // Last tick (top value)
+            d3.select(this).select('text')
+                .style('font-size', '18px')
+                .style('font-weight', 'bold');
+        }
+    });
     
     // Create or reuse tooltip
     let tooltip = d3.select('body').select('.tooltip');
