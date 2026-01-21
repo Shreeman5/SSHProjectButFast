@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Create daily_username_attacks Table - File by File
-Real data, not fake estimates!
+Create daily_username_attacks Table with COUNTRY - File by File
+Updated version of your working script with country column added
 """
 
 import duckdb
@@ -13,7 +13,7 @@ PARQUET_DIR = Path('./parquet_output')
 
 def main():
     print("="*70)
-    print("Creating daily_username_attacks Table")
+    print("Creating daily_username_attacks Table WITH COUNTRY")
     print("="*70)
     
     # Find all Parquet files
@@ -35,12 +35,13 @@ def main():
     print(f"\n🗑️  Dropping old table (if exists)...")
     conn.execute("DROP TABLE IF EXISTS daily_username_attacks")
     
-    # Create empty table
+    # Create empty table WITH COUNTRY COLUMN
     print(f"🔨 Creating empty table...")
     conn.execute("""
         CREATE TABLE daily_username_attacks (
             date DATE,
             username VARCHAR,
+            country VARCHAR,
             attacks BIGINT
         )
     """)
@@ -63,14 +64,17 @@ def main():
         try:
             file_str = str(parquet_file)
             
+            # ADD COUNTRY TO THE SELECT
             conn.execute(f"""
                 INSERT INTO daily_username_attacks
                 SELECT 
                     DATE_TRUNC('day', datetime)::DATE as date,
                     Username as username,
+                    country,
                     COUNT(*) as attacks
                 FROM read_parquet('{file_str}')
-                GROUP BY date, username
+                WHERE country IS NOT NULL AND country != ''
+                GROUP BY date, username, country
             """)
             
             success_count += 1
@@ -82,17 +86,18 @@ def main():
     overall_elapsed = time.time() - overall_start
     print(f"\n✅ Processed {success_count}/{len(all_files)} files ({overall_elapsed/60:.1f} minutes)")
     
-    # Aggregate duplicates
+    # Aggregate duplicates - NOW INCLUDES COUNTRY
     print(f"\n🔄 Aggregating duplicate entries...")
     conn.execute("""
         CREATE TABLE daily_username_attacks_final AS
         SELECT 
             date,
             username,
+            country,
             SUM(attacks) as attacks
         FROM daily_username_attacks
-        GROUP BY date, username
-        ORDER BY date, username
+        GROUP BY date, username, country
+        ORDER BY date, username, country
     """)
     conn.execute("DROP TABLE daily_username_attacks")
     conn.execute("ALTER TABLE daily_username_attacks_final RENAME TO daily_username_attacks")
@@ -102,6 +107,7 @@ def main():
     total_rows = conn.execute("SELECT COUNT(*) FROM daily_username_attacks").fetchone()[0]
     total_attacks = conn.execute("SELECT SUM(attacks) FROM daily_username_attacks").fetchone()[0]
     total_usernames = conn.execute("SELECT COUNT(DISTINCT username) FROM daily_username_attacks").fetchone()[0]
+    total_countries = conn.execute("SELECT COUNT(DISTINCT country) FROM daily_username_attacks").fetchone()[0]
     
     print(f"\n{'='*70}")
     print("FINAL SUMMARY")
@@ -110,19 +116,22 @@ def main():
     print(f"   Total rows: {total_rows:,}")
     print(f"   Total attacks: {total_attacks:,}")
     print(f"   Unique usernames: {total_usernames:,}")
+    print(f"   Unique countries: {total_countries:,}")
     print(f"   Time taken: {overall_elapsed/60:.1f} minutes")
     
-    # Show sample - 'root' on Nov 1
-    print(f"\n📊 Sample (root on Nov 1, 2022):")
+    # Show sample - 'root' on Nov 1 BY COUNTRY
+    print(f"\n📊 Sample (root on Nov 1, 2022 by country):")
     sample = conn.execute("""
-        SELECT date, username, attacks
+        SELECT date, username, country, attacks
         FROM daily_username_attacks
         WHERE username = 'root' AND date = '2022-11-01'
+        ORDER BY attacks DESC
+        LIMIT 5
     """).fetchall()
     
     if sample:
-        for date, username, attacks in sample:
-            print(f"   {date} - {username}: {attacks:,}")
+        for date, username, country, attacks in sample:
+            print(f"   {date} - {username} - {country}: {attacks:,}")
     else:
         print("   No data found for root on Nov 1")
     
@@ -137,12 +146,16 @@ def main():
     else:
         diff = abs(expected_total - total_attacks)
         pct = (diff / expected_total) * 100
-        print(f"   Difference: {diff:,} ({pct:.2f}%)")
+        print(f"   ⚠️  Difference: {diff:,} ({pct:.2f}%)")
+        print(f"   (This is OK - some records may have NULL/empty countries)")
     
     conn.close()
     
     print(f"\n{'='*70}")
-    print("✅ Done! Now update the API to use this table")
+    print("✅ Done! Now:")
+    print("   1. Run the ASN rebuild script")
+    print("   2. Update API endpoints")
+    print("   3. Restart API")
     print(f"{'='*70}")
 
 

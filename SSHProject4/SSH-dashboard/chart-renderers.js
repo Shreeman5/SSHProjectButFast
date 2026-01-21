@@ -148,6 +148,9 @@ function renderLineChart(containerId, data, options) {
     if (tooltip.empty()) {
         tooltip = d3.select('body').append('div').attr('class', 'tooltip');
     }
+
+    // Pre-declare legendG for right-click handler
+    let legendG = null;
     
     // Add larger invisible hit areas
     g.selectAll('.dot-hitarea')
@@ -196,7 +199,7 @@ function renderLineChart(containerId, data, options) {
         .style('pointer-events', 'none');
 }
 
-// Render multi-line chart (used for Charts 2-6)
+// Render multi-line chart with TOP LEGEND and interactions
 function renderMultiLineChart(containerId, series, options) {
     const container = d3.select(`#${containerId}`);
     container.selectAll('*').remove();
@@ -208,26 +211,55 @@ function renderMultiLineChart(containerId, series, options) {
         return;
     }
     
-    // Console log data for debugging
+    // Calculate total attacks per series for ordering
+    const seriesWithTotals = series.map(s => ({
+        ...s,
+        total: d3.sum(s.values, d => d[options.yKey])
+    }));
+    
+    // Sort by total attacks (descending)
+    seriesWithTotals.sort((a, b) => b.total - a.total);
+    
     console.log(`${containerId} data:`, {
-        seriesCount: series.length,
-        seriesNames: series.map(s => s.key),
-        firstSeries: series[0]?.key,
-        sampleData: series[0]?.values.slice(0, 3)
+        seriesCount: seriesWithTotals.length,
+        seriesNames: seriesWithTotals.map(s => s.key),
+        topCountry: seriesWithTotals[0]?.key
     });
+    
+    // Distinct color palette
+    const distinctColors = [
+        '#1f77b4', // blue
+        '#ff7f0e', // orange
+        '#2ca02c', // green
+        '#d62728', // red
+        '#9467bd', // purple
+        '#8c564b', // brown
+        '#e377c2', // pink
+        '#7f7f7f', // gray
+        '#bcbd22', // olive
+        '#17becf'  // cyan
+    ];
+    const countryColor = d3.scaleOrdinal()
+        .domain(seriesWithTotals.map(s => s.key))
+        .range(distinctColors);
+    
+    // Adjusted height for top legend
+    const isCountryChart = containerId === 'countrychart';
+    const legendHeight = isCountryChart ? 70 : 0;
     
     const svg = container.append('svg')
         .attr('width', CHART_WIDTH)
-        .attr('height', CHART_HEIGHT);
-    
-    const g = svg.append('g')
-        .attr('transform', `translate(${MARGIN.left},${MARGIN.top})`);
+        .attr('height', CHART_HEIGHT + legendHeight);
     
     const width = CHART_WIDTH - MARGIN.left - MARGIN.right;
     const height = CHART_HEIGHT - MARGIN.top - MARGIN.bottom;
     
-    // Parse dates as local dates to avoid timezone shift
-    series.forEach(s => {
+    // Main chart group
+    const g = svg.append('g')
+        .attr('transform', `translate(${MARGIN.left},${MARGIN.top + legendHeight})`);
+    
+    // Parse dates
+    seriesWithTotals.forEach(s => {
         s.values.forEach(d => {
             const parts = d.date.split('-');
             d.date = new Date(parts[0], parts[1] - 1, parts[2]);
@@ -237,20 +269,20 @@ function renderMultiLineChart(containerId, series, options) {
     // Scales
     const x = d3.scaleTime()
         .domain([
-            d3.min(series, s => d3.min(s.values, d => d.date)),
-            d3.max(series, s => d3.max(s.values, d => d.date))
+            d3.min(seriesWithTotals, s => d3.min(s.values, d => d.date)),
+            d3.max(seriesWithTotals, s => d3.max(s.values, d => d.date))
         ])
         .range([0, width]);
     
     const y = d3.scaleLinear()
-        .domain([0, d3.max(series, s => d3.max(s.values, d => d[options.yKey]))])
+        .domain([0, d3.max(seriesWithTotals, s => d3.max(s.values, d => d[options.yKey]))])
         .range([height, 0]);
     
-    // Extract all unique dates for exact tick placement
-    const allDates = [...new Set(series.flatMap(s => s.values.map(v => v.date.getTime())))].sort();
+    // Extract dates for ticks
+    const allDates = [...new Set(seriesWithTotals.flatMap(s => s.values.map(v => v.date.getTime())))].sort();
     const actualDates = allDates.map(t => new Date(t));
     
-    // Add grid lines - use tickValues to force exact dates
+    // Grid lines
     g.append('g')
         .attr('class', 'grid')
         .attr('transform', `translate(0,${height})`)
@@ -259,89 +291,115 @@ function renderMultiLineChart(containerId, series, options) {
             .tickSize(-height)
             .tickFormat(''));
     
+    const yMax = d3.max(seriesWithTotals, s => d3.max(s.values, d => d[options.yKey]));
+    const tickValues = [0, yMax * 0.25, yMax * 0.5, yMax * 0.75, yMax];
+    
     g.append('g')
         .attr('class', 'grid')
         .call(d3.axisLeft(y)
-            .ticks(5)
+            .tickValues(tickValues)
             .tickSize(-width)
             .tickFormat(''));
     
-    // X-axis with all dates, rotated labels, LARGER font, human-readable format
+    // X-axis
     g.append('g')
         .attr('class', 'axis')
         .attr('transform', `translate(0,${height})`)
         .call(d3.axisBottom(x)
             .tickValues(actualDates)
-            .tickFormat(d3.timeFormat('%b %d')))  // Nov 18 instead of 11/18
+            .tickFormat(d3.timeFormat('%b %d')))
         .selectAll('text')
         .style('text-anchor', 'end')
-        .style('font-size', '15px')  // Increased from 9px
+        .style('font-size', '12px')
         .attr('dx', '-.8em')
         .attr('dy', '.15em')
         .attr('transform', 'rotate(-45)');
     
-    // Y-axis with human-readable format (8k instead of 8000) and larger font
+    // Y-axis
     const yAxis = g.append('g')
         .attr('class', 'axis')
         .call(d3.axisLeft(y)
-            .ticks(5)
+            .tickValues(tickValues)
             .tickFormat(d => {
                 if (d >= 1000000) return (d / 1000000).toFixed(1) + 'M';
                 if (d >= 1000) return (d / 1000).toFixed(0) + 'k';
                 return d;
             }));
     
-    // Increase font size for all y-axis labels
-    yAxis.selectAll('text')
-        .style('font-size', '15px');
+    yAxis.selectAll('text').style('font-size', '15px');
     
-    // Make the top y-axis value much bigger
     const ticks = yAxis.selectAll('.tick');
     const tickCount = ticks.size();
     ticks.each(function(d, i) {
-        if (i === tickCount - 1) {  // Last tick (top value)
+        if (i === tickCount - 1) {
             d3.select(this).select('text')
                 .style('font-size', '18px')
                 .style('font-weight', 'bold');
         }
     });
     
-    // Create or reuse tooltip
+    // Tooltip
     let tooltip = d3.select('body').select('.tooltip');
     if (tooltip.empty()) {
         tooltip = d3.select('body').append('div').attr('class', 'tooltip');
     }
     
-    // Lines
+    // Line generator
     const line = d3.line()
         .x(d => x(d.date))
         .y(d => y(d[options.yKey]));
     
-    series.forEach((s, i) => {
-        const lineColor = color(s.key);
+    // Track crossed-out countries
+    const crossedOut = new Set();
+    
+    // Draw lines
+    seriesWithTotals.forEach((s, i) => {
+        const lineColor = countryColor(s.key);
         
-        // Draw line
-        g.append('path')
+        const linePath = g.append('path')
             .datum(s.values)
-            .attr('class', 'line')
+            .attr('class', `line line-${i}`)
+            .attr('data-key', s.key)
             .attr('d', line)
             .attr('stroke', lineColor)
-            .style('cursor', options.onClick ? 'pointer' : 'default')
-            .on('click', function() {
-                if (options.onClick) {
-                    console.log('Clicked:', s.key);
-                    options.onClick(s.key);
+            .attr('stroke-width', 2)
+            .attr('fill', 'none')
+            .style('cursor', 'default')
+            .on('contextmenu', function(event) {
+                event.preventDefault();
+                
+                const legendItem = legendG.selectAll('.legend-item')
+                    .filter(function() { return d3.select(this).attr('data-key') === s.key; });
+                
+                if (crossedOut.has(s.key)) {
+                    // Restore
+                    crossedOut.delete(s.key);
+                    d3.select(this)
+                        .style('opacity', 1)
+                        .attr('stroke-dasharray', 'none');
+                    legendItem.select('text').style('text-decoration', 'none');
+                    legendItem.style('opacity', 1);
+                } else {
+                    // Cross out
+                    crossedOut.add(s.key);
+                    d3.select(this)
+                        .style('opacity', 0.3)
+                        .attr('stroke-dasharray', '5,5');
+                    legendItem.select('text').style('text-decoration', 'line-through');
+                    legendItem.style('opacity', 0.5);
                 }
             })
             .on('mouseover', function() {
-                d3.select(this).attr('stroke-width', 4);
+                if (!crossedOut.has(s.key)) {
+                    d3.select(this).attr('stroke-width', 4);
+                }
             })
             .on('mouseout', function() {
                 d3.select(this).attr('stroke-width', 2);
             });
         
-        // Add visible hover points
-        g.selectAll(`.dot-${i}`)
+        // Dots
+         g.selectAll(`.dot-${i}`)
             .data(s.values)
             .enter().append('circle')
             .attr('class', `dot-${i}`)
@@ -353,16 +411,17 @@ function renderMultiLineChart(containerId, series, options) {
             .attr('stroke', 'white')
             .attr('stroke-width', 1)
             .style('cursor', 'pointer')
+            .style('pointer-events', 'all')
             .on('mouseover', function(event, d) {
                 d3.select(this).attr('r', 5).attr('opacity', 1);
                 tooltip.transition().duration(200).style('opacity', 1);
                 tooltip.html(`
-                        <strong>${s.key}</strong><br>
-                        <strong>Date:</strong> ${d3.timeFormat('%Y-%m-%d')(d.date)}<br>
-                        <strong>Attacks:</strong> ${d[options.yKey].toLocaleString()}
-                    `)
-                    .style('left', (event.pageX + 10) + 'px')
-                    .style('top', (event.pageY - 10) + 'px');
+                    <strong>${s.key}</strong><br>
+                    <strong>Date:</strong> ${d3.timeFormat('%Y-%m-%d')(d.date)}<br>
+                    <strong>Attacks:</strong> ${d[options.yKey].toLocaleString()}
+                `)
+                .style('left', (event.pageX + 10) + 'px')
+                .style('top', (event.pageY - 10) + 'px');
             })
             .on('mouseout', function() {
                 d3.select(this).attr('r', 2.5).attr('opacity', 0.7);
@@ -370,30 +429,87 @@ function renderMultiLineChart(containerId, series, options) {
             });
     });
     
-    // Legend
-    const legend = g.append('g')
-        .attr('transform', `translate(${width + 10}, 0)`);
-    
-    series.forEach((s, i) => {
-        const legendRow = legend.append('g')
-            .attr('transform', `translate(0, ${i * 20})`)
-            .style('cursor', options.onClick ? 'pointer' : 'default')
-            .on('click', function() {
-                if (options.onClick) {
-                    console.log('Legend clicked:', s.key);
-                    options.onClick(s.key);
-                }
-            });
+    // TOP LEGEND (for country chart only)
+    if (true) {
+        legendG = svg.append('g')
+            .attr('transform', `translate(${MARGIN.left}, 10)`);
         
-        legendRow.append('rect')
-            .attr('width', 15)
-            .attr('height', 15)
-            .attr('fill', color(s.key));
+        const cols = 5;
+        const cellWidth = width / cols;
         
-        legendRow.append('text')
-            .attr('x', 20)
-            .attr('y', 12)
-            .attr('font-size', '11px')
-            .text(s.key.substring(0, 20));
-    });
+        seriesWithTotals.forEach((s, i) => {
+            const row = Math.floor(i / cols);
+            const col = i % cols;
+            
+            const legendItem = legendG.append('g')
+                .attr('transform', `translate(${col * cellWidth}, ${row * 30})`)
+                .attr('class', 'legend-item')
+                .attr('data-key', s.key)
+                .style('cursor', 'pointer')
+                .on('mouseover', function() {
+                    // Highlight this line
+                    g.selectAll('.line').style('opacity', 0.1);
+                    g.selectAll(`.line[data-key="${s.key}"]`)
+                        .style('opacity', 1)
+                        .attr('stroke-width', 4);
+                    
+                    d3.select(this).select('rect')
+                        .attr('stroke', '#000')
+                        .attr('stroke-width', 2);
+                })
+                .on('mouseout', function() {
+                    g.selectAll('.line')
+                        .style('opacity', d => crossedOut.has(d3.select(this).attr('data-key')) ? 0.3 : 1)
+                        .attr('stroke-width', 2);
+                    
+                    d3.select(this).select('rect')
+                        .attr('stroke', 'none');
+                })
+                .on('click', function(event) {
+                    if (options.onClick) {
+                        event.preventDefault();
+                        options.onClick(s.key);
+                    }
+                });
+            
+            legendItem.append('rect')
+                .attr('width', 18)
+                .attr('height', 18)
+                .attr('fill', countryColor(s.key))
+                .attr('stroke', 'none');
+            
+            legendItem.append('text')
+                .attr('x', 24)
+                .attr('y', 13)
+                .attr('font-size', '13px')
+                .style('user-select', 'none')
+                .text(s.key.length > 16 ? s.key.substring(0, 14) + '..' : s.key);
+        });
+    } else {
+        // Regular right-side legend for other charts
+        const legend = g.append('g')
+            .attr('transform', `translate(${width + 10}, 0)`);
+        
+        seriesWithTotals.forEach((s, i) => {
+            const legendRow = legend.append('g')
+                .attr('transform', `translate(0, ${i * 20})`)
+                .style('cursor', options.onClick ? 'pointer' : 'default')
+                .on('click', function() {
+                    if (options.onClick) {
+                        options.onClick(s.key);
+                    }
+                });
+            
+            legendRow.append('rect')
+                .attr('width', 15)
+                .attr('height', 15)
+                .attr('fill', countryColor(s.key));
+            
+            legendRow.append('text')
+                .attr('x', 20)
+                .attr('y', 12)
+                .attr('font-size', '11px')
+                .text(s.key.substring(0, 20));
+        });
+    }
 }

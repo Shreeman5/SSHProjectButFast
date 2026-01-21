@@ -14,7 +14,8 @@ let state = {
     ip: null,
     username: null,
     asn: null,
-    dateRangeHistory: []  // Stack of previous date ranges
+    dateRangeHistory: [],  // Stack of previous date ranges
+    crossedOutCountries: []  // ← ADD THIS LINE
 };
 
 // Color scale
@@ -81,6 +82,10 @@ function resetFilters() {
     state.username = null;
     state.asn = null;
     state.dateRangeHistory = [];  // Clear history
+    state.crossedOutCountries = [];  // ← ADD THIS LINE
+
+    // Explicitly show volatility chart
+    document.getElementById('chart3').style.display = 'block';
     
     updateURL();
     updateFilterInfo();
@@ -108,5 +113,12 @@ async function loadAllCharts() {
         loadUsernameAttacks(),
         loadASNAttacks()
     ]);
+    // Hide volatility chart if country is selected
+    if (!state.country) {
+        chartsToLoad.push(loadUnusualCountries());
+        document.getElementById('chart3').style.display = 'block';
+    } else {
+        document.getElementById('chart3').style.display = 'none';
+    }
     console.log('All charts loaded successfully');
 }

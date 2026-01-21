@@ -254,36 +254,67 @@ def get_ip_attacks():
     return jsonify(data)
 
 
+
 @app.route('/api/username_attacks', methods=['GET'])
 def get_username_attacks():
-    """Chart 5: Top usernames - with date range filtering in top 10 selection"""
+    """Chart 5: Top usernames - with date range AND country filtering"""
     start, end = parse_date_params()
     country_filter = request.args.get('country')
     
     conn = get_db()
     
-    # Note: daily_username_attacks doesn't have country data,
-    # so country filter is ignored for now
-    
-    query = f"""
-        WITH top_usernames AS (
-            SELECT username
-            FROM daily_username_attacks
-            WHERE date BETWEEN '{start}' AND '{end}'
-            GROUP BY username
-            ORDER BY SUM(attacks) DESC
-            LIMIT 10
-        )
-        SELECT 
-            d.date::VARCHAR as date,
-            d.username,
-            'Mixed' as country,
-            d.attacks
-        FROM daily_username_attacks d
-        INNER JOIN top_usernames t ON d.username = t.username
-        WHERE d.date BETWEEN '{start}' AND '{end}'
-        ORDER BY d.date, d.attacks DESC
-    """
+    if country_filter:
+        # Filter by country, get top 10 usernames from that country in date range
+        query = f"""
+            WITH top_usernames AS (
+                SELECT username
+                FROM daily_username_attacks
+                WHERE date BETWEEN '{start}' AND '{end}'
+                  AND country = '{country_filter}'
+                GROUP BY username
+                ORDER BY SUM(attacks) DESC
+                LIMIT 10
+            )
+            SELECT 
+                d.date::VARCHAR as date,
+                d.username,
+                d.country,
+                d.attacks
+            FROM daily_username_attacks d
+            INNER JOIN top_usernames t ON d.username = t.username
+            WHERE d.date BETWEEN '{start}' AND '{end}'
+              AND d.country = '{country_filter}'
+            ORDER BY d.date, d.attacks DESC
+        """
+    else:
+        # No country filter, aggregate across all countries
+        query = f"""
+            WITH top_usernames AS (
+                SELECT username
+                FROM daily_username_attacks
+                WHERE date BETWEEN '{start}' AND '{end}'
+                GROUP BY username
+                ORDER BY SUM(attacks) DESC
+                LIMIT 10
+            ),
+            aggregated AS (
+                SELECT 
+                    d.date,
+                    d.username,
+                    SUM(d.attacks) as attacks
+                FROM daily_username_attacks d
+                INNER JOIN top_usernames t ON d.username = t.username
+                WHERE d.date BETWEEN '{start}' AND '{end}'
+                GROUP BY d.date, d.username
+            )
+            SELECT 
+                date::VARCHAR as date,
+                username,
+                'Mixed' as country,
+                attacks
+            FROM aggregated
+            ORDER BY date, attacks DESC
+        """
     
     result = conn.execute(query).fetchall()
     conn.close()
@@ -291,57 +322,72 @@ def get_username_attacks():
     data = [{'date': row[0], 'username': row[1], 'country': row[2], 'attacks': row[3]} for row in result]
     return jsonify(data)
 
-
-
 @app.route('/api/asn_attacks', methods=['GET'])
 def get_asn_attacks():
-    """Chart 6: Top ASNs - REAL DATA with date range filtering"""
+    """Chart 6: Top ASNs - with date range AND country filtering"""
     start, end = parse_date_params()
     country_filter = request.args.get('country')
     
     conn = get_db()
     
     if country_filter:
-        # If country filter is active, we can't accurately filter ASNs by country
-        # since daily_asn_attacks doesn't have country data
-        # For now, just return top 10 overall from date range
-        pass
-    
-    query = f"""
-        WITH top_asns AS (
-            SELECT asn_name
-            FROM daily_asn_attacks
-            WHERE date BETWEEN '{start}' AND '{end}'
-            GROUP BY asn_name
-            ORDER BY SUM(attacks) DESC
-            LIMIT 10
-        ),
-        aggregated AS (
+        # Filter by country, get top 10 ASNs from that country in date range
+        query = f"""
+            WITH top_asns AS (
+                SELECT asn_name
+                FROM daily_asn_attacks
+                WHERE date BETWEEN '{start}' AND '{end}'
+                  AND country = '{country_filter}'
+                GROUP BY asn_name
+                ORDER BY SUM(attacks) DESC
+                LIMIT 10
+            )
             SELECT 
-                d.date,
+                d.date::VARCHAR as date,
                 d.asn_name,
-                SUM(d.attacks) as attacks
+                d.country,
+                d.attacks
             FROM daily_asn_attacks d
             INNER JOIN top_asns t ON d.asn_name = t.asn_name
             WHERE d.date BETWEEN '{start}' AND '{end}'
-            GROUP BY d.date, d.asn_name
-        )
-        SELECT 
-            date::VARCHAR as date,
-            asn_name,
-            'Mixed' as country,
-            attacks
-        FROM aggregated
-        ORDER BY date, attacks DESC
-    """
+              AND d.country = '{country_filter}'
+            ORDER BY d.date, d.attacks DESC
+        """
+    else:
+        # No country filter, aggregate across all countries
+        query = f"""
+            WITH top_asns AS (
+                SELECT asn_name
+                FROM daily_asn_attacks
+                WHERE date BETWEEN '{start}' AND '{end}'
+                GROUP BY asn_name
+                ORDER BY SUM(attacks) DESC
+                LIMIT 10
+            ),
+            aggregated AS (
+                SELECT 
+                    d.date,
+                    d.asn_name,
+                    SUM(d.attacks) as attacks
+                FROM daily_asn_attacks d
+                INNER JOIN top_asns t ON d.asn_name = t.asn_name
+                WHERE d.date BETWEEN '{start}' AND '{end}'
+                GROUP BY d.date, d.asn_name
+            )
+            SELECT 
+                date::VARCHAR as date,
+                asn_name,
+                'Mixed' as country,
+                attacks
+            FROM aggregated
+            ORDER BY date, attacks DESC
+        """
     
     result = conn.execute(query).fetchall()
     conn.close()
     
     data = [{'date': row[0], 'asn_name': row[1], 'country': row[2], 'attacks': row[3]} for row in result]
     return jsonify(data)
-
-
 
 @app.route('/api/date_range', methods=['GET'])
 def get_date_range():
