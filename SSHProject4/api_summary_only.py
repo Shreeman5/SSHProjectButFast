@@ -65,12 +65,12 @@ All charts will now show continuous lines even when attacks = 0 on certain days.
 # ============================================================================
 # 1. Country Attacks - WITH ZERO-FILLING
 # ============================================================================
-
 @app.route('/api/country_attacks', methods=['GET'])
 def get_country_attacks():
-    """Chart 2: Top 20 countries - with zero-filling for continuous lines"""
+    """Chart 2: Top 20 countries - with zero-filling and ASN filter"""
     start, end = parse_date_params()
     country_filter = request.args.get('country')
+    asn_filter = request.args.get('asn')  # ← ADD THIS
     
     conn = get_db()
     
@@ -85,6 +85,42 @@ def get_country_attacks():
             WHERE date BETWEEN '{start}' AND '{end}'
               AND country = '{country_filter}'
             ORDER BY date
+        """
+    elif asn_filter:
+        # Filter by ASN - show which countries this ASN operates in
+        query = f"""
+            WITH asn_countries AS (
+                SELECT country
+                FROM daily_asn_attacks
+                WHERE date BETWEEN '{start}' AND '{end}'
+                  AND asn_name = '{asn_filter}'
+                GROUP BY country
+                ORDER BY SUM(attacks) DESC
+                LIMIT 10
+            ),
+            date_range AS (
+                SELECT UNNEST(generate_series(
+                    DATE '{start}',
+                    DATE '{end}',
+                    INTERVAL 1 DAY
+                ))::DATE as date
+            ),
+            complete_grid AS (
+                SELECT d.date, t.country
+                FROM date_range d
+                CROSS JOIN asn_countries t
+            )
+            SELECT 
+                g.date::VARCHAR as date,
+                g.country,
+                COALESCE(SUM(a.attacks), 0) as attacks
+            FROM complete_grid g
+            LEFT JOIN daily_asn_attacks a
+                ON g.date = a.date 
+                AND g.country = a.country
+                AND a.asn_name = '{asn_filter}'
+            GROUP BY g.date, g.country
+            ORDER BY g.date, attacks DESC
         """
     else:
         # Top 20 countries with zero-filling
@@ -126,15 +162,15 @@ def get_country_attacks():
     data = [{'date': row[0], 'country': row[1], 'attacks': row[2]} for row in result]
     return jsonify(data)
 
-
 # ============================================================================
 # 2. Volatile Countries - WITH ZERO-FILLING
 # ============================================================================
 @app.route('/api/unusual_countries', methods=['GET'])
 def get_unusual_countries():
-    """Chart 3: Most Volatile Countries - with zero-filling and country filter"""
+    """Chart 3: Most Volatile Countries - with zero-filling and ASN filter"""
     start, end = parse_date_params()
-    country_filter = request.args.get('country')  # ← ADD THIS
+    country_filter = request.args.get('country')
+    asn_filter = request.args.get('asn')  # ← ADD THIS
     
     conn = get_db()
     
@@ -166,8 +202,76 @@ def get_unusual_countries():
                 AND c.country = '{country_filter}'
             ORDER BY d.date
         """
+    elif asn_filter:
+        # Filter by ASN - show volatile countries for this ASN
+        query = f"""
+            WITH asn_daily_data AS (
+                SELECT 
+                    country,
+                    date,
+                    SUM(attacks) as attacks,
+                    LAG(SUM(attacks)) OVER (PARTITION BY country ORDER BY date) as prev_attacks
+                FROM daily_asn_attacks
+                WHERE date BETWEEN '{start}' AND '{end}'
+                  AND asn_name = '{asn_filter}'
+                GROUP BY country, date
+            ),
+            pct_changes AS (
+                SELECT 
+                    country,
+                    date,
+                    attacks,
+                    prev_attacks,
+                    CASE 
+                        WHEN prev_attacks > 0 THEN ((attacks - prev_attacks) * 100.0 / prev_attacks)
+                        ELSE 0 
+                    END as pct_change
+                FROM asn_daily_data
+                WHERE prev_attacks IS NOT NULL
+            ),
+            volatile_countries AS (
+                SELECT 
+                    country,
+                    MAX(ABS(pct_change)) as max_pct_change
+                FROM pct_changes
+                GROUP BY country
+                ORDER BY max_pct_change DESC
+                LIMIT 10
+            ),
+            date_range AS (
+                SELECT UNNEST(generate_series(
+                    DATE '{start}',
+                    DATE '{end}',
+                    INTERVAL 1 DAY
+                ))::DATE as date
+            ),
+            complete_grid AS (
+                SELECT d.date, v.country
+                FROM date_range d
+                CROSS JOIN volatile_countries v
+            )
+            SELECT 
+                g.date::VARCHAR as date,
+                g.country,
+                COALESCE(SUM(a.attacks), 0) as attacks,
+                COALESCE(
+                    CASE 
+                        WHEN LAG(SUM(a.attacks)) OVER (PARTITION BY g.country ORDER BY g.date) > 0 
+                        THEN ROUND(((COALESCE(SUM(a.attacks), 0) - LAG(SUM(a.attacks)) OVER (PARTITION BY g.country ORDER BY g.date)) * 100.0 
+                             / LAG(SUM(a.attacks)) OVER (PARTITION BY g.country ORDER BY g.date)), 2)
+                        ELSE 0
+                    END, 0
+                ) as pct_change
+            FROM complete_grid g
+            LEFT JOIN daily_asn_attacks a
+                ON g.date = a.date 
+                AND g.country = a.country
+                AND a.asn_name = '{asn_filter}'
+            GROUP BY g.date, g.country
+            ORDER BY g.date, attacks DESC
+        """
     else:
-        # Top 20 volatile countries
+        # Top 20 volatile countries (existing logic)
         query = f"""
             WITH daily_data AS (
                 SELECT 
@@ -239,97 +343,71 @@ def get_unusual_countries():
     data = [{'date': row[0], 'country': row[1], 'attacks': row[2], 'pct_change': row[3]} for row in result]
     return jsonify(data)
 
+
 # ============================================================================
 # 3. IP Attacks - WITH ZERO-FILLING (Already fixed, but included here)
 # ============================================================================
 
 @app.route('/api/ip_attacks', methods=['GET'])
 def get_ip_attacks():
-    """Chart 4: Top 20 IPs - with zero-filling for continuous lines"""
+    """Chart 4: Top 20 IPs - with zero-filling and ASN filter"""
     start, end = parse_date_params()
     country_filter = request.args.get('country')
+    asn_filter = request.args.get('asn')  # ← ADD THIS
     
     conn = get_db()
     
+    # Build WHERE conditions
+    where_conditions = [f"date BETWEEN '{start}' AND '{end}'"]
     if country_filter:
-        # Filter by country first, then get top 20 from date range
-        query = f"""
-            WITH top_ips AS (
-                SELECT IP, country
-                FROM daily_ip_attacks
-                WHERE date BETWEEN '{start}' AND '{end}'
-                  AND country = '{country_filter}'
-                GROUP BY IP, country
-                ORDER BY SUM(attacks) DESC
-                LIMIT 10
-            ),
-            date_range AS (
-                SELECT UNNEST(generate_series(
-                    DATE '{start}',
-                    DATE '{end}',
-                    INTERVAL 1 DAY
-                ))::DATE as date
-            ),
-            complete_grid AS (
-                SELECT d.date, t.IP, t.country
-                FROM date_range d
-                CROSS JOIN top_ips t
-            )
-            SELECT 
-                g.date::VARCHAR as date,
-                g.IP,
-                g.country,
-                COALESCE(SUM(d.attacks), 0) as attacks
-            FROM complete_grid g
-            LEFT JOIN daily_ip_attacks d 
-                ON g.date = d.date 
-                AND g.IP = d.IP 
-                AND g.country = d.country
-            GROUP BY g.date, g.IP, g.country
-            ORDER BY g.date, attacks DESC
-        """
-    else:
-        query = f"""
-            WITH top_ips AS (
-                SELECT IP, country
-                FROM daily_ip_attacks
-                WHERE date BETWEEN '{start}' AND '{end}'
-                GROUP BY IP, country
-                ORDER BY SUM(attacks) DESC
-                LIMIT 10
-            ),
-            date_range AS (
-                SELECT UNNEST(generate_series(
-                    DATE '{start}',
-                    DATE '{end}',
-                    INTERVAL 1 DAY
-                ))::DATE as date
-            ),
-            complete_grid AS (
-                SELECT d.date, t.IP, t.country
-                FROM date_range d
-                CROSS JOIN top_ips t
-            )
-            SELECT 
-                g.date::VARCHAR as date,
-                g.IP,
-                g.country,
-                COALESCE(SUM(d.attacks), 0) as attacks
-            FROM complete_grid g
-            LEFT JOIN daily_ip_attacks d 
-                ON g.date = d.date 
-                AND g.IP = d.IP 
-                AND g.country = d.country
-            GROUP BY g.date, g.IP, g.country
-            ORDER BY g.date, attacks DESC
-        """
+        where_conditions.append(f"country = '{country_filter}'")
+    if asn_filter:
+        where_conditions.append(f"asn_name = '{asn_filter}'")
+    
+    where_clause = " AND ".join(where_conditions)
+    
+    query = f"""
+        WITH top_ips AS (
+            SELECT IP, country
+            FROM daily_ip_attacks
+            WHERE {where_clause}
+            GROUP BY IP, country
+            ORDER BY SUM(attacks) DESC
+            LIMIT 10
+        ),
+        date_range AS (
+            SELECT UNNEST(generate_series(
+                DATE '{start}',
+                DATE '{end}',
+                INTERVAL 1 DAY
+            ))::DATE as date
+        ),
+        complete_grid AS (
+            SELECT d.date, t.IP, t.country
+            FROM date_range d
+            CROSS JOIN top_ips t
+        )
+        SELECT 
+            g.date::VARCHAR as date,
+            g.IP,
+            g.country,
+            COALESCE(SUM(d.attacks), 0) as attacks
+        FROM complete_grid g
+        LEFT JOIN daily_ip_attacks d 
+            ON g.date = d.date 
+            AND g.IP = d.IP 
+            AND g.country = d.country
+        WHERE 1=1
+            {f"AND d.asn_name = '{asn_filter}'" if asn_filter else ""}
+        GROUP BY g.date, g.IP, g.country
+        ORDER BY g.date, attacks DESC
+    """
     
     result = conn.execute(query).fetchall()
     conn.close()
     
     data = [{'date': row[0], 'IP': row[1], 'country': row[2], 'attacks': row[3]} for row in result]
     return jsonify(data)
-
 
 # ============================================================================
 # 4. Username Attacks - WITH ZERO-FILLING
@@ -426,16 +504,38 @@ def get_username_attacks():
 # ============================================================================
 # 5. ASN Attacks - WITH ZERO-FILLING
 # ============================================================================
-
 @app.route('/api/asn_attacks', methods=['GET'])
 def get_asn_attacks():
-    """Chart 6: Top 20 ASNs - with zero-filling for continuous lines"""
+    """Chart 6: Top 20 ASNs - with zero-filling and ASN filter"""
     start, end = parse_date_params()
     country_filter = request.args.get('country')
+    asn_filter = request.args.get('asn')  # ← ADD THIS
     
     conn = get_db()
     
-    if country_filter:
+    if asn_filter:
+        # Single ASN - show only this ASN with zero-filling
+        query = f"""
+            WITH date_range AS (
+                SELECT UNNEST(generate_series(
+                    DATE '{start}',
+                    DATE '{end}',
+                    INTERVAL 1 DAY
+                ))::DATE as date
+            )
+            SELECT 
+                d.date::VARCHAR as date,
+                '{asn_filter}' as asn_name,
+                COALESCE(MAX(a.country), 'Mixed') as country,
+                COALESCE(SUM(a.attacks), 0) as attacks
+            FROM date_range d
+            LEFT JOIN daily_asn_attacks a 
+                ON d.date = a.date 
+                AND a.asn_name = '{asn_filter}'
+            GROUP BY d.date
+            ORDER BY d.date
+        """
+    elif country_filter:
         # Filter by country, get top 20 ASNs from that country
         query = f"""
             WITH top_asns AS (
@@ -473,7 +573,7 @@ def get_asn_attacks():
             ORDER BY g.date, attacks DESC
         """
     else:
-        # No country filter, aggregate across all countries
+        # No filter, aggregate across all countries
         query = f"""
             WITH top_asns AS (
                 SELECT asn_name

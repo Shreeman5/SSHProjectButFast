@@ -42,6 +42,7 @@ def main():
             date DATE,
             username VARCHAR,
             country VARCHAR,
+            asn_name VARCHAR,
             attacks BIGINT
         )
     """)
@@ -71,10 +72,12 @@ def main():
                     DATE_TRUNC('day', datetime)::DATE as date,
                     Username as username,
                     country,
+                    asn_name,
                     COUNT(*) as attacks
                 FROM read_parquet('{file_str}')
                 WHERE country IS NOT NULL AND country != ''
-                GROUP BY date, username, country
+                AND asn_name IS NOT NULL AND asn_name != ''
+                GROUP BY date, username, country, asn_name
             """)
             
             success_count += 1
@@ -94,10 +97,11 @@ def main():
             date,
             username,
             country,
+            asn_name,
             SUM(attacks) as attacks
         FROM daily_username_attacks
-        GROUP BY date, username, country
-        ORDER BY date, username, country
+        GROUP BY date, username, country, asn_name
+        ORDER BY date, username, country, asn_name
     """)
     conn.execute("DROP TABLE daily_username_attacks")
     conn.execute("ALTER TABLE daily_username_attacks_final RENAME TO daily_username_attacks")

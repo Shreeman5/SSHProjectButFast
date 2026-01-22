@@ -18,7 +18,7 @@ async function loadTotalAttacks() {
             }
         });
         
-        // ZERO-FILL: Generate all dates in range (parse as local dates to avoid timezone issues)
+        // ZERO-FILL: Generate all dates in range
         const startParts = state.startDate.split('-');
         const endParts = state.endDate.split('-');
         const start = new Date(startParts[0], startParts[1] - 1, startParts[2]);
@@ -33,7 +33,7 @@ async function loadTotalAttacks() {
             
             chartData.push({
                 date: dateStr,
-                attacks: dateMap.get(dateStr) || 0  // Fill missing with 0
+                attacks: dateMap.get(dateStr) || 0
             });
         }
         
@@ -44,6 +44,42 @@ async function loadTotalAttacks() {
         ];
         const colorIndex = Math.abs(state.country.split('').reduce((a,b) => (a<<5)-a+b.charCodeAt(0),0)) % 10;
         chartColor = distinctColors[colorIndex];
+    } else if (state.asn) {
+        // If ASN is selected, get that ASN's data
+        url = `${API_BASE}/asn_attacks?start=${state.startDate}&end=${state.endDate}&asn=${encodeURIComponent(state.asn)}`;
+        const data = await fetch(url).then(r => r.json());
+        
+        // Aggregate by date
+        const dateMap = new Map();
+        data.forEach(d => {
+            if (dateMap.has(d.date)) {
+                dateMap.set(d.date, dateMap.get(d.date) + d.attacks);
+            } else {
+                dateMap.set(d.date, d.attacks);
+            }
+        });
+        
+        // ZERO-FILL: Generate all dates in range
+        const startParts = state.startDate.split('-');
+        const endParts = state.endDate.split('-');
+        const start = new Date(startParts[0], startParts[1] - 1, startParts[2]);
+        const end = new Date(endParts[0], endParts[1] - 1, endParts[2]);
+        chartData = [];
+        
+        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            const dateStr = `${year}-${month}-${day}`;
+            
+            chartData.push({
+                date: dateStr,
+                attacks: dateMap.get(dateStr) || 0
+            });
+        }
+        
+        // Use ASN-specific color (brownish)
+        chartColor = '#8c564b';
     } else {
         chartData = await fetch(url).then(r => r.json());
     }

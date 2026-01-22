@@ -1,16 +1,34 @@
-// Chart 6: Top 10 Attacking ASN Organizations
-
 async function loadASNAttacks() {
     let url = `${API_BASE}/asn_attacks?start=${state.startDate}&end=${state.endDate}`;
-    if (state.country) url += `&country=${state.country}`;
+    
+    // Filter by country if selected
+    if (state.country) {
+        url += `&country=${encodeURIComponent(state.country)}`;
+    }
+    
+    // Filter by ASN if selected
+    if (state.asn) {
+        url += `&asn=${encodeURIComponent(state.asn)}`;
+    }
     
     const data = await fetch(url).then(r => r.json());
     
-    const nested = d3.group(data, d => d.asn_name);
-    const series = Array.from(nested, ([key, values]) => ({key, values}));
+    const series = d3.group(data, d => d.asn_name);
+    const seriesArray = Array.from(series, ([key, values]) => ({ key, values }));
     
-    renderMultiLineChart('asnchart', series, {
-        xKey: 'date',
-        yKey: 'attacks'
+    renderMultiLineChart('asnchart', seriesArray, {
+        yKey: 'attacks',
+        onClick: (asnName) => {
+            // Left click: toggle filter to this ASN
+            if (state.asn === asnName) {
+                // Click again to unfilter
+                state.asn = null;
+            } else {
+                state.asn = asnName;
+            }
+            updateURL();
+            updateFilterInfo();
+            loadAllCharts();
+        }
     });
 }

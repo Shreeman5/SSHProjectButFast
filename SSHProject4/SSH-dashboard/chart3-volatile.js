@@ -1,12 +1,20 @@
 async function loadUnusualCountries() {
     let url = `${API_BASE}/unusual_countries?start=${state.startDate}&end=${state.endDate}`;
     
-    // If country is selected and filtered from volatile chart, show only that country
     if (state.country && state.filteredFromVolatileChart) {
         url += `&country=${encodeURIComponent(state.country)}`;
     }
+
+    // Add ASN filter to show which countries this ASN operates in
+    if (state.asn) {
+        url += `&asn=${encodeURIComponent(state.asn)}`;
+    }
+    
+    console.log('🟢 Volatile API URL:', url);  // ← ADD THIS
     
     const data = await fetch(url).then(r => r.json());
+    
+    console.log('🟢 Volatile API Response:', data);  // ← ADD THIS
     
     const series = d3.group(data, d => d.country);
     const seriesArray = Array.from(series, ([key, values]) => ({ key, values }));
@@ -14,14 +22,12 @@ async function loadUnusualCountries() {
     renderMultiLineChart('volatilechart', seriesArray, {
         yKey: 'attacks',
         onClick: (country) => {
-            // Left click: filter to this country from volatile chart
             if (state.country === country && state.filteredFromVolatileChart) {
-                // Click again to unfilter
                 state.country = null;
                 state.filteredFromVolatileChart = false;
             } else {
                 state.country = country;
-                state.filteredFromVolatileChart = true;  // Mark as filtered from volatile
+                state.filteredFromVolatileChart = true;
             }
             updateURL();
             updateFilterInfo();

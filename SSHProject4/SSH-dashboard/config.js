@@ -52,6 +52,8 @@ function updateFilterInfo() {
     
     // Update Restore Countries button near country chart
     updateRestoreCountriesButton();
+
+    updateRestoreASNsButton();  // ← ADD THIS
 }
 
 // New function to update Go Back button
@@ -109,6 +111,26 @@ function restoreCountries() {
     state.filteredFromVolatileChart = false;  // Clear volatile chart flag
     document.getElementById('chart2').style.display = 'block';  // Show country chart
     document.getElementById('chart3').style.display = 'block';  // Show volatile chart
+    updateURL();
+    updateFilterInfo();
+    loadAllCharts();
+}
+
+// Update Restore ASNs button
+function updateRestoreASNsButton() {
+    const restoreContainer = document.getElementById('restore-asns-container');
+    
+    if (state.asn) {
+        restoreContainer.innerHTML = `<button onclick="restoreASNs()" class="restore-btn">Restore All ASNs</button>`;
+        restoreContainer.style.display = 'inline-block';
+    } else {
+        restoreContainer.style.display = 'none';
+    }
+}
+
+// Restore all ASNs (clear ASN filter)
+function restoreASNs() {
+    state.asn = null;
     updateURL();
     updateFilterInfo();
     loadAllCharts();
