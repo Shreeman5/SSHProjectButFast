@@ -104,7 +104,7 @@
             color: #999;
         }
 
-        /* Go Back Button - Purple style matching filter buttons */
+        /* Go Back Button */
         #go-back-container {
             display: inline-block;
         }
@@ -120,7 +120,7 @@
             cursor: pointer;
             transition: all 0.2s ease;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
-            margin: 0;  /* ← Add this */
+            margin: 0;
         }
 
         #go-back-container .filter-btn:hover {
@@ -133,7 +133,7 @@
             transform: scale(0.98);
         }
 
-        /* Restore Countries Button - Purple style matching filter buttons */
+        /* Restore Countries Button */
         #restore-countries-container {
             display: inline-block;
         }
@@ -145,32 +145,7 @@
             padding: 5px 12px;
             border-radius: 4px;
             font-size: 12px;
-            font-weight: 500;        #restore-countries-container {
-            display: inline-block;
-        }
-
-        #restore-countries-container .restore-btn {
-            background-color: #7c4dff;
-            color: white;
-            border: none;
-            padding: 5px 12px;
-            border-radius: 4px;
-            font-size: 12px;
             font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
-        }
-
-        #restore-countries-container .restore-btn:hover {
-            background-color: #6a3de8;
-            transform: scale(1.05);
-            box-shadow: 0 2px 8px rgba(124, 77, 255, 0.4);
-        }
-
-        #restore-countries-container .restore-btn:active {
-            transform: scale(0.98);
-        }
             cursor: pointer;
             transition: all 0.2s ease;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
@@ -242,7 +217,8 @@
             transform: scale(0.98);
         }
 
-         #restore-usernames-container {
+        /* Restore Usernames Button */
+        #restore-usernames-container {
             display: inline-block;
         }
 
@@ -266,6 +242,7 @@
             transform: scale(0.95);
         }
 
+        /* Toggle Button for Country Chart */
         .toggle-btn {
             padding: 6px 14px;
             border-radius: 5px;
@@ -310,6 +287,7 @@
         <button class="reset-btn" onclick="resetFilters()">Reset All Filters</button>
     </div>
     
+    <!-- 1. Date Chart -->
     <div id="chart1" class="chart-container">
         <div class="chart-title" style="display: flex; align-items: center; gap: 10px;">
             <span>Total Attacks Over Time</span>
@@ -319,7 +297,7 @@
         <div id="datechart"></div>
     </div>
     
-    <!-- REPLACE THE TITLE LINE WITH: -->
+    <!-- 2. Country Chart -->
     <div id="chart2" class="chart-container">
         <div class="chart-title" style="display: flex; align-items: center; gap: 10px;">
             <span>Top 10 Countries</span>
@@ -333,7 +311,7 @@
         <div id="countrychart"></div>
     </div>
     
-    <!-- 4. ASN Chart -->
+    <!-- 3. ASN Chart -->
     <div id="chart6" class="chart-container">
         <div class="chart-title" style="display: flex; align-items: center; gap: 10px;">
             <span>Top 10 Attacking ASN Organizations</span>
@@ -343,7 +321,7 @@
         <div id="asnchart"></div>
     </div>
     
-    <!-- 5. IP Chart -->
+    <!-- 4. IP Chart -->
     <div id="chart4" class="chart-container">
         <div class="chart-title" style="display: flex; align-items: center; gap: 10px;">
             <span>Top 10 Attacking IPs</span>
@@ -353,7 +331,7 @@
         <div id="ipchart"></div>
     </div>
     
-    <!-- 6. Username Chart -->
+    <!-- 5. Username Chart -->
     <div id="chart5" class="chart-container">
         <div class="chart-title" style="display: flex; align-items: center; gap: 10px;">
             <span>Top 10 Attacking Usernames</span>
@@ -363,19 +341,17 @@
         <div id="usernamechart"></div>
     </div>
 
-    <!-- Load JavaScript modules in order -->
+    <!-- Load JavaScript modules -->
     <script src="config.js"></script>
     <script src="chart-renderers.js"></script>
     <script src="chart1-total.js"></script>
     <script src="chart2-countries.js"></script>
-    <script src="chart3-volatile.js"></script>
     <script src="chart4-ips.js"></script>
     <script src="chart5-usernames.js"></script>
     <script src="chart6-asns.js"></script>
     
     <!-- Initialize dashboard -->
     <script>
-        // Initialize on page load
         initState();
         updateFilterInfo();
         loadAllCharts();

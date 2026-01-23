@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>SSH Attack Analysis Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+</head>
+<body>
+    <h1>SSH Attack Analysis Dashboard</h1>
+    
+    <div id="filter-info" class="filter-info" style="display:none;">
+        <span id="filter-text"></span>
+        <button class="reset-btn" onclick="resetFilters()">Reset All Filters</button>
+    </div>
+    
+    <!-- 1. Date Chart -->
+    <div id="chart1" class="chart-container">
+        <div class="chart-title" style="display: flex; align-items: center; gap: 10px;">
+            <span>Total Attacks Over Time</span>
+            <span id="go-back-container" style="display: none;"></span>
+        </div>
+        <div class="chart-subtitle">Brush to zoom (disabled when ≤ 2 dates)</div>
+        <div id="datechart"></div>
+    </div>
+    
+    <!-- 2. Country Chart -->
+    <div id="chart2" class="chart-container">
+        <div class="chart-title" style="display: flex; align-items: center; gap: 10px;">
+            <span>Top 10 Countries</span>
+            <button id="country-toggle-btn" onclick="toggleCountryView()" 
+                    class="toggle-btn toggle-volatile">
+                Show Volatile Countries
+            </button>
+            <span id="restore-countries-container" style="display: none;"></span>
+        </div>
+        <div class="chart-subtitle">Hover legend to highlight | Left-click to filter | Right-click to cross out</div>
+        <div id="countrychart"></div>
+    </div>
+    
+    <!-- 3. ASN Chart -->
+    <div id="chart6" class="chart-container">
+        <div class="chart-title" style="display: flex; align-items: center; gap: 10px;">
+            <span>Top 10 Attacking ASN Organizations</span>
+            <span id="restore-asns-container" style="display: none;"></span>
+        </div>
+        <div class="chart-subtitle">Hover legend to highlight | Left-click to filter | Right-click to cross out</div>
+        <div id="asnchart"></div>
+    </div>
+    
+    <!-- 4. IP Chart -->
+    <div id="chart4" class="chart-container">
+        <div class="chart-title" style="display: flex; align-items: center; gap: 10px;">
+            <span>Top 10 Attacking IPs</span>
+            <span id="restore-ips-container" style="display: none;"></span>
+        </div>
+        <div class="chart-subtitle">Hover legend to highlight | Left-click to filter | Right-click to cross out</div>
+        <div id="ipchart"></div>
+    </div>
+    
+    <!-- 5. Username Chart -->
+    <div id="chart5" class="chart-container">
+        <div class="chart-title" style="display: flex; align-items: center; gap: 10px;">
+            <span>Top 10 Attacking Usernames</span>
+            <span id="restore-usernames-container" style="display: none;"></span>
+        </div>
+        <div class="chart-subtitle">Hover legend to highlight | Left-click to filter | Right-click to cross out</div>
+        <div id="usernamechart"></div>
+    </div>
+
+    <!-- Load JavaScript modules -->
+    <script src="config.js"></script>
+    <script src="chart-renderers.js"></script>
+    <script src="chart1-total.js"></script>
+    <script src="chart2-countries.js"></script>
+    <script src="chart4-ips.js"></script>
+    <script src="chart5-usernames.js"></script>
+    <script src="chart6-asns.js"></script>
+    
+    <!-- Initialize dashboard -->
+    <script>
+        initState();
+        updateFilterInfo();
+        loadAllCharts();
+    </script>
+</body>
+</html>

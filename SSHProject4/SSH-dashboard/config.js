@@ -2,7 +2,7 @@
 
 // Configuration
 const API_BASE = 'http://localhost:5000/api';
-const CHART_WIDTH = 1800;  // Increased from 1800 to fill more screen space
+const CHART_WIDTH = 1800;
 const CHART_HEIGHT = 370;
 const MARGIN = {top: 20, right: 40, bottom: 50, left: 50};
 
@@ -14,9 +14,7 @@ let state = {
     ip: null,
     username: null,
     asn: null,
-    dateRangeHistory: [],  // Stack of previous date ranges
-    crossedOutCountries: [],  // ← ADD THIS LINE
-    filteredFromVolatileChart: false,  // Track if filter came from volatile chart
+    dateRangeHistory: [],
     countryViewMode: 'attacking'
 };
 
@@ -30,7 +28,6 @@ function initState() {
     state.endDate = params.get('end') || state.endDate;
     state.country = params.get('country') || null;
 }
-
 
 function updateFilterInfo() {
     const filterInfo = document.getElementById('filter-info');
@@ -48,20 +45,13 @@ function updateFilterInfo() {
     filterInfo.innerHTML = html;
     filterInfo.style.display = 'block';
     
-    // Update Go Back button near date chart
     updateGoBackButton();
-    
-    // Update Restore Countries button near country chart
     updateRestoreCountriesButton();
-
-    updateRestoreASNsButton();  // ← ADD THIS
-
-    updateRestoreIPsButton();  // ← ADD THIS NEW LINE
-
+    updateRestoreASNsButton();
+    updateRestoreIPsButton();
     updateRestoreUsernamesButton();
 }
 
-// New function to update Go Back button
 function updateGoBackButton() {
     const goBackContainer = document.getElementById('go-back-container');
     if (state.dateRangeHistory.length > 0) {
@@ -83,34 +73,6 @@ function updateRestoreCountriesButton() {
     }
 }
 
-// Restore all countries (clear country filter)
-function restoreCountries() {
-    state.country = null;
-    updateURL();
-    updateFilterInfo();
-    loadAllCharts();
-}
-
-
-// Go back to previous date range
-function goBack() {
-    if (state.dateRangeHistory.length === 0) return;
-    
-    // Pop the last date range from history
-    const previous = state.dateRangeHistory.pop();
-    
-    // Restore it (without adding to history again)
-    state.startDate = previous.startDate;
-    state.endDate = previous.endDate;
-    
-    updateURL();
-    updateFilterInfo();
-    loadAllCharts();
-}
-
-
-
-// Update Restore ASNs button
 function updateRestoreASNsButton() {
     const restoreContainer = document.getElementById('restore-asns-container');
     
@@ -122,21 +84,6 @@ function updateRestoreASNsButton() {
     }
 }
 
-// Restore all ASNs (clear ASN filter)
-function restoreASNs() {
-    state.asn = null;
-    updateURL();
-    updateFilterInfo();
-    loadAllCharts();
-}
-
-// ============================================================================
-// ADD THESE TWO FUNCTIONS to config.js
-// Place them right AFTER restoreASNs() function (after line 137)
-// and BEFORE resetFilters() function
-// ============================================================================
-
-// Update Restore IPs button
 function updateRestoreIPsButton() {
     const restoreContainer = document.getElementById('restore-ips-container');
     
@@ -148,16 +95,6 @@ function updateRestoreIPsButton() {
     }
 }
 
-// Restore all IPs (clear IP filter)
-function restoreIPs() {
-    state.ip = null;
-    updateURL();
-    updateFilterInfo();
-    loadAllCharts();
-}
-
-
-// Update Restore Usernames button
 function updateRestoreUsernamesButton() {
     const restoreContainer = document.getElementById('restore-usernames-container');
     
@@ -169,7 +106,39 @@ function updateRestoreUsernamesButton() {
     }
 }
 
-// Restore all Usernames (clear username filter)
+function goBack() {
+    if (state.dateRangeHistory.length === 0) return;
+    
+    const previous = state.dateRangeHistory.pop();
+    state.startDate = previous.startDate;
+    state.endDate = previous.endDate;
+    
+    updateURL();
+    updateFilterInfo();
+    loadAllCharts();
+}
+
+function restoreCountries() {
+    state.country = null;
+    updateURL();
+    updateFilterInfo();
+    loadAllCharts();
+}
+
+function restoreASNs() {
+    state.asn = null;
+    updateURL();
+    updateFilterInfo();
+    loadAllCharts();
+}
+
+function restoreIPs() {
+    state.ip = null;
+    updateURL();
+    updateFilterInfo();
+    loadAllCharts();
+}
+
 function restoreUsernames() {
     state.username = null;
     updateURL();
@@ -177,8 +146,6 @@ function restoreUsernames() {
     loadAllCharts();
 }
 
-
-// Reset all filters
 function resetFilters() {
     state.startDate = '2022-11-01';
     state.endDate = '2023-01-08';
@@ -187,14 +154,12 @@ function resetFilters() {
     state.username = null;
     state.asn = null;
     state.dateRangeHistory = [];
-    state.crossedOutCountries = [];
     
     updateURL();
     updateFilterInfo();
     loadAllCharts();
 }
 
-// Update URL with current state
 function updateURL() {
     const params = new URLSearchParams();
     params.set('start', state.startDate);
@@ -204,11 +169,10 @@ function updateURL() {
     window.history.pushState({}, '', `?${params.toString()}`);
 }
 
-// Load all charts
 async function loadAllCharts() {
     const chartsToLoad = [
         loadTotalAttacks(),
-        loadCountryAttacks(),    // Now handles toggle internally
+        loadCountryAttacks(),
         loadIPAttacks(),
         loadUsernameAttacks(),
         loadASNAttacks()
