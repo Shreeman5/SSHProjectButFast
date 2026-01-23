@@ -15,6 +15,11 @@ async function loadIPAttacks() {
         url += `&ip=${encodeURIComponent(state.ip)}`;
     }
     
+    // Add username filter
+    if (state.username) {
+        url += `&username=${encodeURIComponent(state.username)}`;
+    }
+    
     const data = await fetch(url).then(r => r.json());
     
     const series = d3.group(data, d => d.IP);
@@ -22,13 +27,11 @@ async function loadIPAttacks() {
     
     renderMultiLineChart('ipchart', seriesArray, {
         yKey: 'attacks',
-        onClick: (ipAddress) => {
-            // Left click: toggle filter to this IP
-            if (state.ip === ipAddress) {
-                // Click again to unfilter
+        onClick: (ip) => {
+            if (state.ip === ip) {
                 state.ip = null;
             } else {
-                state.ip = ipAddress;
+                state.ip = ip;
             }
             updateURL();
             updateFilterInfo();

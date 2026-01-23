@@ -10,9 +10,14 @@ async function loadCountryAttacks() {
         url += `&asn=${encodeURIComponent(state.asn)}`;
     }
     
-    // Add IP filter to show which country this IP is from
+    // Add IP filter
     if (state.ip) {
         url += `&ip=${encodeURIComponent(state.ip)}`;
+    }
+    
+    // Add username filter
+    if (state.username) {
+        url += `&username=${encodeURIComponent(state.username)}`;
     }
     
     const data = await fetch(url).then(r => r.json());

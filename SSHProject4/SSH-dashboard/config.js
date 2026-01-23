@@ -56,6 +56,8 @@ function updateFilterInfo() {
     updateRestoreASNsButton();  // ← ADD THIS
 
     updateRestoreIPsButton();  // ← ADD THIS NEW LINE
+
+    updateRestoreUsernamesButton();
 }
 
 // New function to update Go Back button
@@ -163,6 +165,28 @@ function restoreIPs() {
     updateFilterInfo();
     loadAllCharts();
 }
+
+
+// Update Restore Usernames button
+function updateRestoreUsernamesButton() {
+    const restoreContainer = document.getElementById('restore-usernames-container');
+    
+    if (state.username) {
+        restoreContainer.innerHTML = `<button onclick="restoreUsernames()" class="restore-btn">Restore All Usernames</button>`;
+        restoreContainer.style.display = 'inline-block';
+    } else {
+        restoreContainer.style.display = 'none';
+    }
+}
+
+// Restore all Usernames (clear username filter)
+function restoreUsernames() {
+    state.username = null;
+    updateURL();
+    updateFilterInfo();
+    loadAllCharts();
+}
+
 
 // Reset all filters
 function resetFilters() {

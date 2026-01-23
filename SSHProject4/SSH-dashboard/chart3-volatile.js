@@ -1,4 +1,3 @@
-
 async function loadUnusualCountries() {
     let url = `${API_BASE}/unusual_countries?start=${state.startDate}&end=${state.endDate}`;
     
@@ -11,9 +10,14 @@ async function loadUnusualCountries() {
         url += `&asn=${encodeURIComponent(state.asn)}`;
     }
     
-    // Add IP filter to show volatility of this IP's country
+    // Add IP filter
     if (state.ip) {
         url += `&ip=${encodeURIComponent(state.ip)}`;
+    }
+    
+    // Add username filter
+    if (state.username) {
+        url += `&username=${encodeURIComponent(state.username)}`;
     }
     
     const data = await fetch(url).then(r => r.json());

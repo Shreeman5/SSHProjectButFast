@@ -269,6 +269,30 @@
         #restore-ips-container .restore-btn:active {
             transform: scale(0.98);
         }
+
+         #restore-usernames-container {
+            display: inline-block;
+        }
+
+        #restore-usernames-container .restore-btn {
+            background-color: #9467bd;
+            color: white;
+            padding: 5px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        #restore-usernames-container .restore-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 2px 8px rgba(148, 103, 189, 0.3);
+        }
+
+        #restore-usernames-container .restore-btn:active {
+            transform: scale(0.95);
+        }
     </style>
 </head>
 <body>
@@ -328,7 +352,10 @@
     
     <!-- 6. Username Chart -->
     <div id="chart5" class="chart-container">
-        <div class="chart-title">Top 10 Attacking Usernames</div>
+        <div class="chart-title" style="display: flex; align-items: center; gap: 10px;">
+            <span>Top 10 Attacking Usernames</span>
+            <span id="restore-usernames-container" style="display: none;"></span>
+        </div>
         <div class="chart-subtitle">Hover legend to highlight | Left-click to filter | Right-click to cross out</div>
         <div id="usernamechart"></div>
     </div>
