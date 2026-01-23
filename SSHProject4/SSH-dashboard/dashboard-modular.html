@@ -186,34 +186,6 @@
             transform: scale(0.98);
         }
 
-        /* Restore Countries Button on Volatile Chart - Match Country Chart Style */
-        #restore-countries-volatile-container {
-            display: inline-block;
-        }
-
-        #restore-countries-volatile-container .restore-btn {
-            background-color: #7c4dff;
-            color: white;
-            border: none;
-            padding: 5px 12px;
-            border-radius: 4px;
-            font-size: 12px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
-        }
-
-        #restore-countries-volatile-container .restore-btn:hover {
-            background-color: #6a3de8;
-            transform: scale(1.05);
-            box-shadow: 0 2px 8px rgba(124, 77, 255, 0.4);
-        }
-
-        #restore-countries-volatile-container .restore-btn:active {
-            transform: scale(0.98);
-        }
-
         /* Restore ASNs Button */
         #restore-asns-container {
             display: inline-block;
@@ -293,6 +265,41 @@
         #restore-usernames-container .restore-btn:active {
             transform: scale(0.95);
         }
+
+        .toggle-btn {
+            padding: 6px 14px;
+            border-radius: 5px;
+            font-size: 12px;
+            font-weight: 500;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .toggle-volatile {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .toggle-volatile:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+        }
+
+        .toggle-attacking {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+        }
+
+        .toggle-attacking:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(245, 87, 108, 0.3);
+        }
+
+        .toggle-btn:active {
+            transform: translateY(0);
+        }
     </style>
 </head>
 <body>
@@ -312,22 +319,18 @@
         <div id="datechart"></div>
     </div>
     
+    <!-- REPLACE THE TITLE LINE WITH: -->
     <div id="chart2" class="chart-container">
-        <div class="chart-title">
-            Top 10 Attacking Countries
-            <span id="restore-countries-container" style="display: none; margin-left: 15px; font-size: 14px; font-weight: normal;"></span>
+        <div class="chart-title" style="display: flex; align-items: center; gap: 10px;">
+            <span>Top 10 Countries</span>
+            <button id="country-toggle-btn" onclick="toggleCountryView()" 
+                    class="toggle-btn toggle-volatile">
+                Show Volatile Countries
+            </button>
+            <span id="restore-countries-container" style="display: none;"></span>
         </div>
         <div class="chart-subtitle">Hover legend to highlight | Left-click to filter | Right-click to cross out</div>
         <div id="countrychart"></div>
-    </div>
-    
-    <div id="chart3" class="chart-container">
-        <div class="chart-title" style="display: flex; align-items: center; gap: 10px;">
-            <span>Top 10 Most Volatile Countries</span>
-            <span id="restore-countries-volatile-container" style="display: none;"></span>
-        </div>
-        <div class="chart-subtitle">Hover legend to highlight | Left-click to filter | Right-click to cross out</div>
-        <div id="volatilechart"></div>
     </div>
     
     <!-- 4. ASN Chart -->

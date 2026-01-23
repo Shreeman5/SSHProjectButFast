@@ -16,7 +16,8 @@ let state = {
     asn: null,
     dateRangeHistory: [],  // Stack of previous date ranges
     crossedOutCountries: [],  // ← ADD THIS LINE
-    filteredFromVolatileChart: false  // Track if filter came from volatile chart
+    filteredFromVolatileChart: false,  // Track if filter came from volatile chart
+    countryViewMode: 'attacking'
 };
 
 // Color scale
@@ -71,27 +72,25 @@ function updateGoBackButton() {
     }
 }
 
-// Update Restore Countries button (appears on both country and volatile charts)
 function updateRestoreCountriesButton() {
-    const restoreContainerCountry = document.getElementById('restore-countries-container');
-    const restoreContainerVolatile = document.getElementById('restore-countries-volatile-container');
+    const restoreContainer = document.getElementById('restore-countries-container');
     
-    if (state.country && !state.filteredFromVolatileChart) {
-        // Filtered from country chart - show button on country chart
-        restoreContainerCountry.innerHTML = `<button onclick="restoreCountries()" class="restore-btn">Restore All Countries</button>`;
-        restoreContainerCountry.style.display = 'inline-block';
-        restoreContainerVolatile.style.display = 'none';
-    } else if (state.country && state.filteredFromVolatileChart) {
-        // Filtered from volatile chart - show button on volatile chart
-        restoreContainerVolatile.innerHTML = `<button onclick="restoreCountries()" class="restore-btn">Restore All Countries</button>`;
-        restoreContainerVolatile.style.display = 'inline-block';
-        restoreContainerCountry.style.display = 'none';
+    if (state.country) {
+        restoreContainer.innerHTML = `<button onclick="restoreCountries()" class="restore-btn">Restore All Countries</button>`;
+        restoreContainer.style.display = 'inline-block';
     } else {
-        // No filter - hide both buttons
-        restoreContainerCountry.style.display = 'none';
-        restoreContainerVolatile.style.display = 'none';
+        restoreContainer.style.display = 'none';
     }
 }
+
+// Restore all countries (clear country filter)
+function restoreCountries() {
+    state.country = null;
+    updateURL();
+    updateFilterInfo();
+    loadAllCharts();
+}
+
 
 // Go back to previous date range
 function goBack() {
@@ -109,16 +108,7 @@ function goBack() {
     loadAllCharts();
 }
 
-// Restore all countries (clear country filter)
-function restoreCountries() {
-    state.country = null;
-    state.filteredFromVolatileChart = false;  // Clear volatile chart flag
-    document.getElementById('chart2').style.display = 'block';  // Show country chart
-    document.getElementById('chart3').style.display = 'block';  // Show volatile chart
-    updateURL();
-    updateFilterInfo();
-    loadAllCharts();
-}
+
 
 // Update Restore ASNs button
 function updateRestoreASNsButton() {
@@ -198,11 +188,6 @@ function resetFilters() {
     state.asn = null;
     state.dateRangeHistory = [];
     state.crossedOutCountries = [];
-    state.filteredFromVolatileChart = false;  // Clear volatile flag
-    
-    // Show both charts
-    document.getElementById('chart2').style.display = 'block';
-    document.getElementById('chart3').style.display = 'block';
     
     updateURL();
     updateFilterInfo();
@@ -221,33 +206,13 @@ function updateURL() {
 
 // Load all charts
 async function loadAllCharts() {
-    // console.log('Loading all charts with state:', state);
-    
     const chartsToLoad = [
         loadTotalAttacks(),
+        loadCountryAttacks(),    // Now handles toggle internally
         loadIPAttacks(),
         loadUsernameAttacks(),
         loadASNAttacks()
     ];
     
-    if (!state.country) {
-        // No filter: show both country and volatile charts
-        chartsToLoad.push(loadCountryAttacks());
-        chartsToLoad.push(loadUnusualCountries());
-        document.getElementById('chart2').style.display = 'block';
-        document.getElementById('chart3').style.display = 'block';
-    } else if (state.filteredFromVolatileChart) {
-        // Filtered from volatile chart: hide country chart, keep volatile chart
-        chartsToLoad.push(loadUnusualCountries());
-        document.getElementById('chart2').style.display = 'none';
-        document.getElementById('chart3').style.display = 'block';
-    } else {
-        // Filtered from country chart: hide volatile chart, keep country chart
-        chartsToLoad.push(loadCountryAttacks());
-        document.getElementById('chart2').style.display = 'block';
-        document.getElementById('chart3').style.display = 'none';
-    }
-    
     await Promise.all(chartsToLoad);
-    // console.log('All charts loaded successfully');
 }
