@@ -80,6 +80,42 @@ async function loadTotalAttacks() {
         
         // Use ASN-specific color (brownish)
         chartColor = '#8c564b';
+    } else if (state.ip) {
+        // If IP is selected, get that IP's data
+        url = `${API_BASE}/ip_attacks?start=${state.startDate}&end=${state.endDate}&ip=${encodeURIComponent(state.ip)}`;
+        const data = await fetch(url).then(r => r.json());
+        
+        // Aggregate by date
+        const dateMap = new Map();
+        data.forEach(d => {
+            if (dateMap.has(d.date)) {
+                dateMap.set(d.date, dateMap.get(d.date) + d.attacks);
+            } else {
+                dateMap.set(d.date, d.attacks);
+            }
+        });
+        
+        // ZERO-FILL: Generate all dates in range
+        const startParts = state.startDate.split('-');
+        const endParts = state.endDate.split('-');
+        const start = new Date(startParts[0], startParts[1] - 1, startParts[2]);
+        const end = new Date(endParts[0], endParts[1] - 1, endParts[2]);
+        chartData = [];
+        
+        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            const dateStr = `${year}-${month}-${day}`;
+            
+            chartData.push({
+                date: dateStr,
+                attacks: dateMap.get(dateStr) || 0
+            });
+        }
+        
+        // Use IP-specific color (orange)
+        chartColor = '#ff7f0e';
     } else {
         chartData = await fetch(url).then(r => r.json());
     }

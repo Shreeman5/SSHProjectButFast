@@ -1,179 +1,192 @@
 #!/usr/bin/env python3
 """
-Create daily_ip_attacks Table with ASN INFO
-Track daily attacks per IP address with country AND ASN info
+Finalize daily_ip_username_attacks Table - CHUNK-BY-CHUNK AGGREGATION
+Processes ALL records but in small chunks to avoid memory issues
+This is slow but thorough and safe
 """
 
 import duckdb
 import time
-from pathlib import Path
 
 DB_PATH = './attack_data.db'
-PARQUET_DIR = Path('./parquet_output')
 
 def main():
     print("="*70)
-    print("Creating daily_ip_attacks Table - WITH ASN INFO")
+    print("Finalizing daily_ip_username_attacks - CHUNK AGGREGATION")
     print("="*70)
     
-    # Find all Parquet files
-    all_files = sorted(PARQUET_DIR.glob("year=*/month=*/*.parquet"))
-    print(f"\n📂 Found {len(all_files)} Parquet files")
+    conn = duckdb.connect(DB_PATH)
     
-    estimated_mins = (len(all_files) * 0.5) / 60
-    print(f"⏱️  Estimated time: ~{estimated_mins:.0f} minutes")
+    # Check if temp table exists
+    tables = conn.execute("SHOW TABLES").fetchall()
+    table_names = [t[0] for t in tables]
+    
+    if 'daily_ip_username_attacks_temp' not in table_names:
+        print("❌ Error: daily_ip_username_attacks_temp table not found!")
+        conn.close()
+        return
+    
+    # Get date range
+    date_range = conn.execute("""
+        SELECT MIN(date) as min_date, MAX(date) as max_date
+        FROM daily_ip_username_attacks_temp
+    """).fetchone()
+    
+    min_date = date_range[0]
+    max_date = date_range[1]
+    
+    # Get total row count
+    total_rows = conn.execute("SELECT COUNT(*) FROM daily_ip_username_attacks_temp").fetchone()[0]
+    
+    print(f"\n📊 Source table stats:")
+    print(f"   Total rows: {total_rows:,}")
+    print(f"   Date range: {min_date} to {max_date}")
+    
+    # Get all unique dates
+    dates = conn.execute("""
+        SELECT DISTINCT date 
+        FROM daily_ip_username_attacks_temp 
+        ORDER BY date
+    """).fetchall()
+    
+    dates = [d[0] for d in dates]
+    print(f"   Unique dates: {len(dates)}")
+    
+    print(f"\n💡 Strategy: Process one date at a time, aggregate duplicates")
+    print(f"   This processes ALL records but uses minimal memory")
+    
+    estimated_time = len(dates) * 1.5  # ~1.5 seconds per date
+    print(f"   Estimated time: ~{estimated_time/60:.1f} minutes")
     
     response = input("\nProceed? (y/n): ").strip().lower()
     if response != 'y':
         print("Cancelled")
+        conn.close()
         return
     
-    # Connect to database
-    conn = duckdb.connect(DB_PATH)
+    # Drop final table if exists
+    conn.execute("DROP TABLE IF EXISTS daily_ip_username_attacks")
     
-    # Drop existing table if it exists
-    print(f"\n🗑️  Dropping old table (if exists)...")
-    conn.execute("DROP TABLE IF EXISTS daily_ip_attacks")
-    
-    # Create empty table WITH ASN
-    print(f"🔨 Creating empty table...")
+    # Create final table
+    print(f"\n🔨 Creating final table...")
     conn.execute("""
-        CREATE TABLE daily_ip_attacks (
+        CREATE TABLE daily_ip_username_attacks (
             date DATE,
             IP VARCHAR,
+            username VARCHAR,
             country VARCHAR,
             asn_name VARCHAR,
             attacks BIGINT
         )
     """)
-    print("✅ Table created")
     
-    # Process files one by one
-    print(f"\n🔄 Processing {len(all_files)} files...")
+    # Process each date
+    print(f"\n🔄 Processing {len(dates)} dates...")
+    start_time = time.time()
+    processed_rows = 0
+    total_duplicates_found = 0
     
-    overall_start = time.time()
-    success_count = 0
-    
-    for i, parquet_file in enumerate(all_files, 1):
+    for i, date in enumerate(dates, 1):
+        date_start = time.time()
         
-        if i == 1 or i % 100 == 0 or i == len(all_files):
-            elapsed = time.time() - overall_start
-            rate = i / elapsed if elapsed > 0 else 0
-            remaining = (len(all_files) - i) / rate if rate > 0 else 0
-            print(f"   [{i}/{len(all_files)}] Processing... ({rate:.1f} files/sec, ~{remaining/60:.1f}min left)")
+        # Get row count for this date BEFORE aggregation
+        before_count = conn.execute(f"""
+            SELECT COUNT(*) 
+            FROM daily_ip_username_attacks_temp 
+            WHERE date = '{date}'
+        """).fetchone()[0]
         
-        try:
-            file_str = str(parquet_file)
+        # Aggregate this date and insert into final table
+        conn.execute(f"""
+            INSERT INTO daily_ip_username_attacks
+            SELECT 
+                date,
+                IP,
+                username,
+                country,
+                asn_name,
+                SUM(attacks) as attacks
+            FROM daily_ip_username_attacks_temp
+            WHERE date = '{date}'
+            GROUP BY date, IP, username, country, asn_name
+        """)
+        
+        # Get row count AFTER aggregation
+        after_count = conn.execute(f"""
+            SELECT COUNT(*) 
+            FROM daily_ip_username_attacks 
+            WHERE date = '{date}'
+        """).fetchone()[0]
+        
+        duplicates_removed = before_count - after_count
+        total_duplicates_found += duplicates_removed
+        processed_rows += after_count
+        
+        date_elapsed = time.time() - date_start
+        
+        # Show progress every 5 dates or on first/last
+        if i == 1 or i % 5 == 0 or i == len(dates):
+            elapsed = time.time() - start_time
+            rate = i / elapsed
+            remaining = (len(dates) - i) / rate if rate > 0 else 0
             
-            conn.execute(f"""
-                INSERT INTO daily_ip_attacks
-                SELECT 
-                    DATE_TRUNC('day', datetime)::DATE as date,
-                    IP,
-                    country,
-                    asn_name,
-                    COUNT(*) as attacks
-                FROM read_parquet('{file_str}')
-                WHERE IP IS NOT NULL
-                GROUP BY date, IP, country, asn_name
-            """)
-            
-            success_count += 1
-            
-        except Exception as e:
-            print(f"   ❌ Error on {parquet_file.name}: {e}")
-            continue
+            dup_str = f" ({duplicates_removed:,} dups removed)" if duplicates_removed > 0 else ""
+            print(f"   [{i}/{len(dates)}] {date}: {after_count:,} rows{dup_str} (~{remaining/60:.1f}min left)")
     
-    overall_elapsed = time.time() - overall_start
-    print(f"\n✅ Processed {success_count}/{len(all_files)} files ({overall_elapsed/60:.1f} minutes)")
+    total_elapsed = time.time() - start_time
     
-    # Aggregate duplicates (in case same date/IP appears in multiple files)
-    print(f"\n🔄 Aggregating duplicate entries...")
-    conn.execute("""
-        CREATE TABLE daily_ip_attacks_final AS
-        SELECT 
-            date,
-            IP,
-            country,
-            asn_name,
-            SUM(attacks) as attacks
-        FROM daily_ip_attacks
-        GROUP BY date, IP, country, asn_name
-        ORDER BY date, IP
-    """)
-    conn.execute("DROP TABLE daily_ip_attacks")
-    conn.execute("ALTER TABLE daily_ip_attacks_final RENAME TO daily_ip_attacks")
-    print(f"   ✅ Aggregation complete")
+    print(f"\n✅ Processing complete in {total_elapsed/60:.1f} minutes")
+    print(f"   Total duplicates removed: {total_duplicates_found:,}")
+    print(f"   Final row count: {processed_rows:,}")
+    
+    # Drop temp table
+    print(f"\n🗑️  Dropping temp table...")
+    conn.execute("DROP TABLE daily_ip_username_attacks_temp")
     
     # Get final stats
-    total_rows = conn.execute("SELECT COUNT(*) FROM daily_ip_attacks").fetchone()[0]
-    total_attacks = conn.execute("SELECT SUM(attacks) FROM daily_ip_attacks").fetchone()[0]
-    total_ips = conn.execute("SELECT COUNT(DISTINCT IP) FROM daily_ip_attacks").fetchone()[0]
-    total_asns = conn.execute("SELECT COUNT(DISTINCT asn_name) FROM daily_ip_attacks").fetchone()[0]
+    print(f"\n📊 Final statistics...")
+    
+    final_count = conn.execute("SELECT COUNT(*) FROM daily_ip_username_attacks").fetchone()[0]
+    total_attacks = conn.execute("SELECT SUM(attacks) FROM daily_ip_username_attacks").fetchone()[0]
+    total_ips = conn.execute("SELECT COUNT(DISTINCT IP) FROM daily_ip_username_attacks").fetchone()[0]
+    total_usernames = conn.execute("SELECT COUNT(DISTINCT username) FROM daily_ip_username_attacks").fetchone()[0]
     
     print(f"\n{'='*70}")
     print("FINAL SUMMARY")
     print(f"{'='*70}")
     print(f"\n✅ Table created successfully!")
-    print(f"   Total rows: {total_rows:,}")
+    print(f"   Total rows: {final_count:,}")
     print(f"   Total attacks: {total_attacks:,}")
     print(f"   Unique IPs: {total_ips:,}")
-    print(f"   Unique ASNs: {total_asns:,}")
-    print(f"   Time taken: {overall_elapsed/60:.1f} minutes")
+    print(f"   Unique usernames: {total_usernames:,}")
+    print(f"   Duplicates removed: {total_duplicates_found:,} ({total_duplicates_found/total_rows*100:.2f}%)")
+    print(f"   Processing time: {total_elapsed/60:.1f} minutes")
     
-    # Show sample - Top IP on Nov 1
-    print(f"\n📊 Top IP on Nov 1, 2022:")
+    # Show sample
+    print(f"\n📊 Sample data from Nov 1:")
     sample = conn.execute("""
-        SELECT IP, country, asn_name, attacks
-        FROM daily_ip_attacks
-        WHERE date = '2022-11-01'
-        ORDER BY attacks DESC
-        LIMIT 1
-    """).fetchone()
-    
-    if sample:
-        print(f"   {sample[0]} ({sample[1]}, {sample[2]}): {sample[3]:,} attacks")
-    
-    # Show top 5 IPs on Nov 1
-    print(f"\n📊 Top 5 IPs on Nov 1, 2022:")
-    top = conn.execute("""
-        SELECT IP, country, asn_name, attacks
-        FROM daily_ip_attacks
+        SELECT IP, username, country, asn_name, attacks
+        FROM daily_ip_username_attacks
         WHERE date = '2022-11-01'
         ORDER BY attacks DESC
         LIMIT 5
     """).fetchall()
     
-    for ip, country, asn, attacks in top:
-        print(f"   {ip:15s} ({country[:15]:15s}, {asn[:30]:30s}): {attacks:>8,}")
+    for ip, username, country, asn, attacks in sample:
+        print(f"   {ip:15s} → '{username:15s}' ({country[:15]:15s}): {attacks:>5,}")
     
     # Verify against daily_stats
     expected_total = conn.execute("SELECT SUM(total_attacks) FROM daily_stats").fetchone()[0]
     print(f"\n🔍 Verification:")
-    print(f"   Expected (from daily_stats): {expected_total:,}")
-    print(f"   Actual (from IP table): {total_attacks:,}")
+    print(f"   Expected: {expected_total:,}")
+    print(f"   Actual:   {total_attacks:,}")
     
     if abs(total_attacks - expected_total) < 1000:
-        print(f"   ✅ PERFECT MATCH! All 213M attacks captured!")
+        print(f"   ✅ PERFECT MATCH!")
     else:
         diff = abs(expected_total - total_attacks)
         pct = (diff / expected_total) * 100
         print(f"   Difference: {diff:,} ({pct:.2f}%)")
-        if pct < 1:
-            print(f"   ✅ Very close!")
-    
-    # Show ASN distribution
-    print(f"\n📊 Top 5 ASNs in the dataset:")
-    top_asns = conn.execute("""
-        SELECT asn_name, SUM(attacks) as total
-        FROM daily_ip_attacks
-        GROUP BY asn_name
-        ORDER BY total DESC
-        LIMIT 5
-    """).fetchall()
-    
-    for asn, total in top_asns:
-        print(f"   {asn[:40]:40s}: {total:>12,}")
     
     conn.close()
     

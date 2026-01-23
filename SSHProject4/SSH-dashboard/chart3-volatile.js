@@ -1,3 +1,4 @@
+
 async function loadUnusualCountries() {
     let url = `${API_BASE}/unusual_countries?start=${state.startDate}&end=${state.endDate}`;
     
@@ -10,11 +11,12 @@ async function loadUnusualCountries() {
         url += `&asn=${encodeURIComponent(state.asn)}`;
     }
     
-    // console.log('🟢 Volatile API URL:', url);  // ← ADD THIS
+    // Add IP filter to show volatility of this IP's country
+    if (state.ip) {
+        url += `&ip=${encodeURIComponent(state.ip)}`;
+    }
     
     const data = await fetch(url).then(r => r.json());
-    
-    // console.log('🟢 Volatile API Response:', data);  // ← ADD THIS
     
     const series = d3.group(data, d => d.country);
     const seriesArray = Array.from(series, ([key, values]) => ({ key, values }));

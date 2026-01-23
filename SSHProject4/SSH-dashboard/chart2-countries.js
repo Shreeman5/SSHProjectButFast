@@ -10,11 +10,12 @@ async function loadCountryAttacks() {
         url += `&asn=${encodeURIComponent(state.asn)}`;
     }
     
-    // console.log('🔵 Country API URL:', url);  // ← ADD THIS
+    // Add IP filter to show which country this IP is from
+    if (state.ip) {
+        url += `&ip=${encodeURIComponent(state.ip)}`;
+    }
     
     const data = await fetch(url).then(r => r.json());
-    
-    // console.log('🔵 Country API Response:', data);  // ← ADD THIS
     
     const series = d3.group(data, d => d.country);
     const seriesArray = Array.from(series, ([key, values]) => ({ key, values }));

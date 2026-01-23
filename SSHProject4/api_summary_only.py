@@ -65,16 +65,49 @@ All charts will now show continuous lines even when attacks = 0 on certain days.
 # ============================================================================
 # 1. Country Attacks - WITH ZERO-FILLING
 # ============================================================================
+# ============================================================================
+# UPDATED /api/country_attacks endpoint - ADD IP FILTER
+# Replace in api_summary_only.py
+# ============================================================================
+
 @app.route('/api/country_attacks', methods=['GET'])
 def get_country_attacks():
-    """Chart 2: Top 20 countries - with zero-filling and ASN filter"""
+    """Chart 2: Top 20 countries - with zero-filling and IP filter"""
     start, end = parse_date_params()
     country_filter = request.args.get('country')
-    asn_filter = request.args.get('asn')  # ← ADD THIS
+    asn_filter = request.args.get('asn')
+    ip_filter = request.args.get('ip')  # ← NEW
     
     conn = get_db()
     
-    if country_filter:
+    if ip_filter:
+        # Filter by IP - show which country this IP is from
+        query = f"""
+            WITH date_range AS (
+                SELECT UNNEST(generate_series(
+                    DATE '{start}',
+                    DATE '{end}',
+                    INTERVAL 1 DAY
+                ))::DATE as date
+            ),
+            ip_country AS (
+                SELECT DISTINCT country
+                FROM daily_ip_attacks
+                WHERE IP = '{ip_filter}'
+                LIMIT 1
+            )
+            SELECT 
+                d.date::VARCHAR as date,
+                COALESCE(i.country, (SELECT country FROM ip_country)) as country,
+                COALESCE(i.attacks, 0) as attacks
+            FROM date_range d
+            CROSS JOIN ip_country
+            LEFT JOIN daily_ip_attacks i
+                ON d.date = i.date
+                AND i.IP = '{ip_filter}'
+            ORDER BY d.date
+        """
+    elif country_filter:
         # Single country, no zero-filling needed
         query = f"""
             SELECT 
@@ -162,19 +195,61 @@ def get_country_attacks():
     data = [{'date': row[0], 'country': row[1], 'attacks': row[2]} for row in result]
     return jsonify(data)
 
+
 # ============================================================================
 # 2. Volatile Countries - WITH ZERO-FILLING
 # ============================================================================
+# ============================================================================
+# UPDATED /api/unusual_countries endpoint - ADD IP FILTER
+# Replace in api_summary_only.py
+# ============================================================================
+
 @app.route('/api/unusual_countries', methods=['GET'])
 def get_unusual_countries():
-    """Chart 3: Most Volatile Countries - with zero-filling and ASN filter"""
+    """Chart 3: Most Volatile Countries - with zero-filling and IP filter"""
     start, end = parse_date_params()
     country_filter = request.args.get('country')
-    asn_filter = request.args.get('asn')  # ← ADD THIS
+    asn_filter = request.args.get('asn')
+    ip_filter = request.args.get('ip')  # ← NEW
     
     conn = get_db()
     
-    if country_filter:
+    if ip_filter:
+        # Filter by IP - show volatility of this IP's country
+        query = f"""
+            WITH ip_country AS (
+                SELECT DISTINCT country
+                FROM daily_ip_attacks
+                WHERE IP = '{ip_filter}'
+                LIMIT 1
+            ),
+            date_range AS (
+                SELECT UNNEST(generate_series(
+                    DATE '{start}',
+                    DATE '{end}',
+                    INTERVAL 1 DAY
+                ))::DATE as date
+            )
+            SELECT 
+                d.date::VARCHAR as date,
+                COALESCE(i.country, (SELECT country FROM ip_country)) as country,
+                COALESCE(i.attacks, 0) as attacks,
+                COALESCE(
+                    CASE 
+                        WHEN LAG(i.attacks) OVER (ORDER BY d.date) > 0 
+                        THEN ROUND(((COALESCE(i.attacks, 0) - LAG(i.attacks) OVER (ORDER BY d.date)) * 100.0 
+                             / LAG(i.attacks) OVER (ORDER BY d.date)), 2)
+                        ELSE 0
+                    END, 0
+                ) as pct_change
+            FROM date_range d
+            CROSS JOIN ip_country
+            LEFT JOIN daily_ip_attacks i
+                ON d.date = i.date
+                AND i.IP = '{ip_filter}'
+            ORDER BY d.date
+        """
+    elif country_filter:
         # Single country - just return its data with zero-filling
         query = f"""
             WITH date_range AS (
@@ -345,88 +420,92 @@ def get_unusual_countries():
 
 
 # ============================================================================
-# 3. IP Attacks - FIXED ASN FILTER
+# REPLACE the /api/ip_attacks endpoint in api_summary_only.py with this:
 # ============================================================================
+
 @app.route('/api/ip_attacks', methods=['GET'])
 def get_ip_attacks():
-    """Chart 4: Top 20 IPs - with zero-filling and ASN filter - DEBUG VERSION"""
+    """Chart 4: Top 20 IPs - with zero-filling and IP filter"""
     start, end = parse_date_params()
     country_filter = request.args.get('country')
     asn_filter = request.args.get('asn')
-    
-    # DEBUG: Print what we received
-    print("\n" + "="*70)
-    print("IP ATTACKS ENDPOINT CALLED")
-    print(f"Start: {start}, End: {end}")
-    print(f"Country Filter: {country_filter}")
-    print(f"ASN Filter: {asn_filter}")
-    print("="*70)
+    ip_filter = request.args.get('ip')  # ← NEW: Check for IP filter
     
     conn = get_db()
     
-    # Build WHERE conditions for finding top IPs
-    where_conditions = [f"date BETWEEN '{start}' AND '{end}'"]
-    if country_filter:
-        where_conditions.append(f"country = '{country_filter}'")
-    if asn_filter:
-        where_conditions.append(f"asn_name = '{asn_filter}'")
-    
-    where_clause = " AND ".join(where_conditions)
-    
-    # Build JOIN conditions for the LEFT JOIN (zero-filling)
-    join_conditions = ["g.date = d.date", "g.IP = d.IP", "g.country = d.country"]
-    if asn_filter:
-        join_conditions.append(f"d.asn_name = '{asn_filter}'")
-    
-    join_clause = " AND ".join(join_conditions)
-    
-    query = f"""
-        WITH top_ips AS (
-            SELECT IP, country
-            FROM daily_ip_attacks
-            WHERE {where_clause}
-            GROUP BY IP, country
-            ORDER BY SUM(attacks) DESC
-            LIMIT 10
-        ),
-        date_range AS (
-            SELECT UNNEST(generate_series(
-                DATE '{start}',
-                DATE '{end}',
-                INTERVAL 1 DAY
-            ))::DATE as date
-        ),
-        complete_grid AS (
-            SELECT d.date, t.IP, t.country
+    if ip_filter:
+        # Single IP selected - show only this IP with zero-filling
+        query = f"""
+            WITH date_range AS (
+                SELECT UNNEST(generate_series(
+                    DATE '{start}',
+                    DATE '{end}',
+                    INTERVAL 1 DAY
+                ))::DATE as date
+            )
+            SELECT 
+                d.date::VARCHAR as date,
+                '{ip_filter}' as IP,
+                COALESCE(MAX(i.country), 'Unknown') as country,
+                COALESCE(SUM(i.attacks), 0) as attacks
             FROM date_range d
-            CROSS JOIN top_ips t
-        )
-        SELECT 
-            g.date::VARCHAR as date,
-            g.IP,
-            g.country,
-            COALESCE(SUM(d.attacks), 0) as attacks
-        FROM complete_grid g
-        LEFT JOIN daily_ip_attacks d 
-            ON {join_clause}
-        GROUP BY g.date, g.IP, g.country
-        ORDER BY g.date, attacks DESC
-    """
-    
-    # DEBUG: Print the generated SQL
-    print("\nGENERATED SQL:")
-    print(query)
-    print("="*70 + "\n")
+            LEFT JOIN daily_ip_attacks i 
+                ON d.date = i.date 
+                AND i.IP = '{ip_filter}'
+            GROUP BY d.date
+            ORDER BY d.date
+        """
+    else:
+        # Build WHERE conditions for finding top IPs
+        where_conditions = [f"date BETWEEN '{start}' AND '{end}'"]
+        if country_filter:
+            where_conditions.append(f"country = '{country_filter}'")
+        if asn_filter:
+            where_conditions.append(f"asn_name = '{asn_filter}'")
+        
+        where_clause = " AND ".join(where_conditions)
+        
+        # Build JOIN conditions for the LEFT JOIN (zero-filling)
+        join_conditions = ["g.date = d.date", "g.IP = d.IP", "g.country = d.country"]
+        if asn_filter:
+            join_conditions.append(f"d.asn_name = '{asn_filter}'")
+        
+        join_clause = " AND ".join(join_conditions)
+        
+        query = f"""
+            WITH top_ips AS (
+                SELECT IP, country
+                FROM daily_ip_attacks
+                WHERE {where_clause}
+                GROUP BY IP, country
+                ORDER BY SUM(attacks) DESC
+                LIMIT 10
+            ),
+            date_range AS (
+                SELECT UNNEST(generate_series(
+                    DATE '{start}',
+                    DATE '{end}',
+                    INTERVAL 1 DAY
+                ))::DATE as date
+            ),
+            complete_grid AS (
+                SELECT d.date, t.IP, t.country
+                FROM date_range d
+                CROSS JOIN top_ips t
+            )
+            SELECT 
+                g.date::VARCHAR as date,
+                g.IP,
+                g.country,
+                COALESCE(SUM(d.attacks), 0) as attacks
+            FROM complete_grid g
+            LEFT JOIN daily_ip_attacks d 
+                ON {join_clause}
+            GROUP BY g.date, g.IP, g.country
+            ORDER BY g.date, attacks DESC
+        """
     
     result = conn.execute(query).fetchall()
-    
-    # DEBUG: Print what we got back
-    print(f"RESULT: Got {len(result)} rows")
-    if result:
-        unique_ips = set(row[1] for row in result)
-        print(f"Unique IPs in result: {unique_ips}")
-    print("="*70 + "\n")
-    
     conn.close()
     
     data = [{'date': row[0], 'IP': row[1], 'country': row[2], 'attacks': row[3]} for row in result]
@@ -436,18 +515,56 @@ def get_ip_attacks():
 # ============================================================================
 # 4. Username Attacks - FIXED WITH ASN FILTER
 # ============================================================================
-
 @app.route('/api/username_attacks', methods=['GET'])
 def get_username_attacks():
-    """Chart 5: Top 20 usernames - with zero-filling and ASN filter"""
+    """Chart 5: Top 10 usernames - with zero-filling and IP filter"""
     start, end = parse_date_params()
     country_filter = request.args.get('country')
-    asn_filter = request.args.get('asn')  # ← ADDED
+    asn_filter = request.args.get('asn')
+    ip_filter = request.args.get('ip')  # ← NEW
     
     conn = get_db()
     
-    if asn_filter:
-        # Filter by ASN - get top 10 usernames from that ASN
+    if ip_filter:
+        # Filter by IP - get top 10 usernames from that IP
+        # Uses the NEW daily_ip_username_attacks table
+        query = f"""
+            WITH top_usernames AS (
+                SELECT username
+                FROM daily_ip_username_attacks
+                WHERE date BETWEEN '{start}' AND '{end}'
+                  AND IP = '{ip_filter}'
+                GROUP BY username
+                ORDER BY SUM(attacks) DESC
+                LIMIT 10
+            ),
+            date_range AS (
+                SELECT UNNEST(generate_series(
+                    DATE '{start}',
+                    DATE '{end}',
+                    INTERVAL 1 DAY
+                ))::DATE as date
+            ),
+            complete_grid AS (
+                SELECT d.date, t.username
+                FROM date_range d
+                CROSS JOIN top_usernames t
+            )
+            SELECT 
+                g.date::VARCHAR as date,
+                g.username,
+                'Single IP' as country,
+                COALESCE(SUM(d.attacks), 0) as attacks
+            FROM complete_grid g
+            LEFT JOIN daily_ip_username_attacks d 
+                ON g.date = d.date 
+                AND g.username = d.username
+                AND d.IP = '{ip_filter}'
+            GROUP BY g.date, g.username
+            ORDER BY g.date, attacks DESC
+        """
+    elif asn_filter:
+        # Filter by ASN - use the OLD daily_username_attacks table
         query = f"""
             WITH top_usernames AS (
                 SELECT username
@@ -484,7 +601,7 @@ def get_username_attacks():
             ORDER BY g.date, attacks DESC
         """
     elif country_filter:
-        # Filter by country, get top 20 usernames from that country
+        # Filter by country - use the OLD daily_username_attacks table
         query = f"""
             WITH top_usernames AS (
                 SELECT username
@@ -521,7 +638,7 @@ def get_username_attacks():
             ORDER BY g.date, attacks DESC
         """
     else:
-        # No country filter, aggregate across all countries
+        # No filter - use the OLD daily_username_attacks table
         query = f"""
             WITH top_usernames AS (
                 SELECT username
@@ -566,16 +683,50 @@ def get_username_attacks():
 # ============================================================================
 # 5. ASN Attacks - WITH ZERO-FILLING
 # ============================================================================
+# ============================================================================
+# UPDATED /api/asn_attacks endpoint - ADD IP FILTER
+# Replace in api_summary_only.py
+# ============================================================================
+
 @app.route('/api/asn_attacks', methods=['GET'])
 def get_asn_attacks():
-    """Chart 6: Top 20 ASNs - with zero-filling and ASN filter"""
+    """Chart 6: Top 20 ASNs - with zero-filling and IP filter"""
     start, end = parse_date_params()
     country_filter = request.args.get('country')
-    asn_filter = request.args.get('asn')  # ← ADD THIS
+    asn_filter = request.args.get('asn')
+    ip_filter = request.args.get('ip')  # ← NEW
     
     conn = get_db()
     
-    if asn_filter:
+    if ip_filter:
+        # Filter by IP - show which ASN this IP belongs to
+        query = f"""
+            WITH date_range AS (
+                SELECT UNNEST(generate_series(
+                    DATE '{start}',
+                    DATE '{end}',
+                    INTERVAL 1 DAY
+                ))::DATE as date
+            ),
+            ip_asn AS (
+                SELECT DISTINCT asn_name, country
+                FROM daily_ip_attacks
+                WHERE IP = '{ip_filter}'
+                LIMIT 1
+            )
+            SELECT 
+                d.date::VARCHAR as date,
+                COALESCE(i.asn_name, (SELECT asn_name FROM ip_asn)) as asn_name,
+                COALESCE(i.country, (SELECT country FROM ip_asn)) as country,
+                COALESCE(i.attacks, 0) as attacks
+            FROM date_range d
+            CROSS JOIN ip_asn
+            LEFT JOIN daily_ip_attacks i
+                ON d.date = i.date
+                AND i.IP = '{ip_filter}'
+            ORDER BY d.date
+        """
+    elif asn_filter:
         # Single ASN - show only this ASN with zero-filling
         query = f"""
             WITH date_range AS (
@@ -675,6 +826,8 @@ def get_asn_attacks():
     
     data = [{'date': row[0], 'asn_name': row[1], 'country': row[2], 'attacks': row[3]} for row in result]
     return jsonify(data)
+
+
 
 
 @app.route('/api/date_range', methods=['GET'])

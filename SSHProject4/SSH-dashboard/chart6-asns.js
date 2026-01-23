@@ -11,6 +11,11 @@ async function loadASNAttacks() {
         url += `&asn=${encodeURIComponent(state.asn)}`;
     }
     
+    // Add IP filter to show which ASN this IP belongs to
+    if (state.ip) {
+        url += `&ip=${encodeURIComponent(state.ip)}`;
+    }
+    
     const data = await fetch(url).then(r => r.json());
     
     const series = d3.group(data, d => d.asn_name);
