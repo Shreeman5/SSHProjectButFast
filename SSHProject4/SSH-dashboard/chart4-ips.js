@@ -10,12 +10,29 @@ async function loadIPAttacks() {
         url += `&asn=${encodeURIComponent(state.asn)}`;
     }
     
+    // Add IP filter
+    if (state.ip) {
+        url += `&ip=${encodeURIComponent(state.ip)}`;
+    }
+    
     const data = await fetch(url).then(r => r.json());
     
     const series = d3.group(data, d => d.IP);
     const seriesArray = Array.from(series, ([key, values]) => ({ key, values }));
     
     renderMultiLineChart('ipchart', seriesArray, {
-        yKey: 'attacks'
+        yKey: 'attacks',
+        onClick: (ipAddress) => {
+            // Left click: toggle filter to this IP
+            if (state.ip === ipAddress) {
+                // Click again to unfilter
+                state.ip = null;
+            } else {
+                state.ip = ipAddress;
+            }
+            updateURL();
+            updateFilterInfo();
+            loadAllCharts();
+        }
     });
 }

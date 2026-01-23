@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Create daily_ip_attacks Table with REAL DATA
-Track daily attacks per IP address with country info
+Create daily_ip_attacks Table with ASN INFO
+Track daily attacks per IP address with country AND ASN info
 """
 
 import duckdb
@@ -13,7 +13,7 @@ PARQUET_DIR = Path('./parquet_output')
 
 def main():
     print("="*70)
-    print("Creating daily_ip_attacks Table - REAL DATA")
+    print("Creating daily_ip_attacks Table - WITH ASN INFO")
     print("="*70)
     
     # Find all Parquet files
@@ -35,13 +35,14 @@ def main():
     print(f"\n🗑️  Dropping old table (if exists)...")
     conn.execute("DROP TABLE IF EXISTS daily_ip_attacks")
     
-    # Create empty table
+    # Create empty table WITH ASN
     print(f"🔨 Creating empty table...")
     conn.execute("""
         CREATE TABLE daily_ip_attacks (
             date DATE,
             IP VARCHAR,
             country VARCHAR,
+            asn_name VARCHAR,
             attacks BIGINT
         )
     """)
@@ -70,10 +71,11 @@ def main():
                     DATE_TRUNC('day', datetime)::DATE as date,
                     IP,
                     country,
+                    asn_name,
                     COUNT(*) as attacks
                 FROM read_parquet('{file_str}')
                 WHERE IP IS NOT NULL
-                GROUP BY date, IP, country
+                GROUP BY date, IP, country, asn_name
             """)
             
             success_count += 1
@@ -93,9 +95,10 @@ def main():
             date,
             IP,
             country,
+            asn_name,
             SUM(attacks) as attacks
         FROM daily_ip_attacks
-        GROUP BY date, IP, country
+        GROUP BY date, IP, country, asn_name
         ORDER BY date, IP
     """)
     conn.execute("DROP TABLE daily_ip_attacks")
@@ -106,6 +109,7 @@ def main():
     total_rows = conn.execute("SELECT COUNT(*) FROM daily_ip_attacks").fetchone()[0]
     total_attacks = conn.execute("SELECT SUM(attacks) FROM daily_ip_attacks").fetchone()[0]
     total_ips = conn.execute("SELECT COUNT(DISTINCT IP) FROM daily_ip_attacks").fetchone()[0]
+    total_asns = conn.execute("SELECT COUNT(DISTINCT asn_name) FROM daily_ip_attacks").fetchone()[0]
     
     print(f"\n{'='*70}")
     print("FINAL SUMMARY")
@@ -114,12 +118,13 @@ def main():
     print(f"   Total rows: {total_rows:,}")
     print(f"   Total attacks: {total_attacks:,}")
     print(f"   Unique IPs: {total_ips:,}")
+    print(f"   Unique ASNs: {total_asns:,}")
     print(f"   Time taken: {overall_elapsed/60:.1f} minutes")
     
     # Show sample - Top IP on Nov 1
     print(f"\n📊 Top IP on Nov 1, 2022:")
     sample = conn.execute("""
-        SELECT IP, country, attacks
+        SELECT IP, country, asn_name, attacks
         FROM daily_ip_attacks
         WHERE date = '2022-11-01'
         ORDER BY attacks DESC
@@ -127,20 +132,20 @@ def main():
     """).fetchone()
     
     if sample:
-        print(f"   {sample[0]} ({sample[1]}): {sample[2]:,} attacks")
+        print(f"   {sample[0]} ({sample[1]}, {sample[2]}): {sample[3]:,} attacks")
     
     # Show top 5 IPs on Nov 1
     print(f"\n📊 Top 5 IPs on Nov 1, 2022:")
     top = conn.execute("""
-        SELECT IP, country, attacks
+        SELECT IP, country, asn_name, attacks
         FROM daily_ip_attacks
         WHERE date = '2022-11-01'
         ORDER BY attacks DESC
         LIMIT 5
     """).fetchall()
     
-    for ip, country, attacks in top:
-        print(f"   {ip:15s} ({country[:20]:20s}): {attacks:>8,}")
+    for ip, country, asn, attacks in top:
+        print(f"   {ip:15s} ({country[:15]:15s}, {asn[:30]:30s}): {attacks:>8,}")
     
     # Verify against daily_stats
     expected_total = conn.execute("SELECT SUM(total_attacks) FROM daily_stats").fetchone()[0]
@@ -157,10 +162,23 @@ def main():
         if pct < 1:
             print(f"   ✅ Very close!")
     
+    # Show ASN distribution
+    print(f"\n📊 Top 5 ASNs in the dataset:")
+    top_asns = conn.execute("""
+        SELECT asn_name, SUM(attacks) as total
+        FROM daily_ip_attacks
+        GROUP BY asn_name
+        ORDER BY total DESC
+        LIMIT 5
+    """).fetchall()
+    
+    for asn, total in top_asns:
+        print(f"   {asn[:40]:40s}: {total:>12,}")
+    
     conn.close()
     
     print(f"\n{'='*70}")
-    print("✅ Done! Restart API: ulimit -n 4096 && python3 api_summary_only.py")
+    print("✅ Done! Restart API: python3 api_summary_only.py")
     print(f"{'='*70}")
 
 

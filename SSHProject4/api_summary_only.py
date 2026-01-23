@@ -345,19 +345,26 @@ def get_unusual_countries():
 
 
 # ============================================================================
-# 3. IP Attacks - WITH ZERO-FILLING (Already fixed, but included here)
+# 3. IP Attacks - FIXED ASN FILTER
 # ============================================================================
-
 @app.route('/api/ip_attacks', methods=['GET'])
 def get_ip_attacks():
-    """Chart 4: Top 20 IPs - with zero-filling and ASN filter"""
+    """Chart 4: Top 20 IPs - with zero-filling and ASN filter - DEBUG VERSION"""
     start, end = parse_date_params()
     country_filter = request.args.get('country')
-    asn_filter = request.args.get('asn')  # ← ADD THIS
+    asn_filter = request.args.get('asn')
+    
+    # DEBUG: Print what we received
+    print("\n" + "="*70)
+    print("IP ATTACKS ENDPOINT CALLED")
+    print(f"Start: {start}, End: {end}")
+    print(f"Country Filter: {country_filter}")
+    print(f"ASN Filter: {asn_filter}")
+    print("="*70)
     
     conn = get_db()
     
-    # Build WHERE conditions
+    # Build WHERE conditions for finding top IPs
     where_conditions = [f"date BETWEEN '{start}' AND '{end}'"]
     if country_filter:
         where_conditions.append(f"country = '{country_filter}'")
@@ -365,6 +372,13 @@ def get_ip_attacks():
         where_conditions.append(f"asn_name = '{asn_filter}'")
     
     where_clause = " AND ".join(where_conditions)
+    
+    # Build JOIN conditions for the LEFT JOIN (zero-filling)
+    join_conditions = ["g.date = d.date", "g.IP = d.IP", "g.country = d.country"]
+    if asn_filter:
+        join_conditions.append(f"d.asn_name = '{asn_filter}'")
+    
+    join_clause = " AND ".join(join_conditions)
     
     query = f"""
         WITH top_ips AS (
@@ -394,34 +408,82 @@ def get_ip_attacks():
             COALESCE(SUM(d.attacks), 0) as attacks
         FROM complete_grid g
         LEFT JOIN daily_ip_attacks d 
-            ON g.date = d.date 
-            AND g.IP = d.IP 
-            AND g.country = d.country
-        WHERE 1=1
-            {f"AND d.asn_name = '{asn_filter}'" if asn_filter else ""}
+            ON {join_clause}
         GROUP BY g.date, g.IP, g.country
         ORDER BY g.date, attacks DESC
     """
     
+    # DEBUG: Print the generated SQL
+    print("\nGENERATED SQL:")
+    print(query)
+    print("="*70 + "\n")
+    
     result = conn.execute(query).fetchall()
+    
+    # DEBUG: Print what we got back
+    print(f"RESULT: Got {len(result)} rows")
+    if result:
+        unique_ips = set(row[1] for row in result)
+        print(f"Unique IPs in result: {unique_ips}")
+    print("="*70 + "\n")
+    
     conn.close()
     
     data = [{'date': row[0], 'IP': row[1], 'country': row[2], 'attacks': row[3]} for row in result]
     return jsonify(data)
 
+
 # ============================================================================
-# 4. Username Attacks - WITH ZERO-FILLING
+# 4. Username Attacks - FIXED WITH ASN FILTER
 # ============================================================================
 
 @app.route('/api/username_attacks', methods=['GET'])
 def get_username_attacks():
-    """Chart 5: Top 20 usernames - with zero-filling for continuous lines"""
+    """Chart 5: Top 20 usernames - with zero-filling and ASN filter"""
     start, end = parse_date_params()
     country_filter = request.args.get('country')
+    asn_filter = request.args.get('asn')  # ← ADDED
     
     conn = get_db()
     
-    if country_filter:
+    if asn_filter:
+        # Filter by ASN - get top 10 usernames from that ASN
+        query = f"""
+            WITH top_usernames AS (
+                SELECT username
+                FROM daily_username_attacks
+                WHERE date BETWEEN '{start}' AND '{end}'
+                  AND asn_name = '{asn_filter}'
+                GROUP BY username
+                ORDER BY SUM(attacks) DESC
+                LIMIT 10
+            ),
+            date_range AS (
+                SELECT UNNEST(generate_series(
+                    DATE '{start}',
+                    DATE '{end}',
+                    INTERVAL 1 DAY
+                ))::DATE as date
+            ),
+            complete_grid AS (
+                SELECT d.date, t.username
+                FROM date_range d
+                CROSS JOIN top_usernames t
+            )
+            SELECT 
+                g.date::VARCHAR as date,
+                g.username,
+                'Mixed' as country,
+                COALESCE(SUM(d.attacks), 0) as attacks
+            FROM complete_grid g
+            LEFT JOIN daily_username_attacks d 
+                ON g.date = d.date 
+                AND g.username = d.username
+                AND d.asn_name = '{asn_filter}'
+            GROUP BY g.date, g.username
+            ORDER BY g.date, attacks DESC
+        """
+    elif country_filter:
         # Filter by country, get top 20 usernames from that country
         query = f"""
             WITH top_usernames AS (
@@ -650,7 +712,6 @@ def index():
         },
         'note': 'Uses only summary tables - fast queries!'
     })
-
 
 if __name__ == '__main__':
     print("="*70)

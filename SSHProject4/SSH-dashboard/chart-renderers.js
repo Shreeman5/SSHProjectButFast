@@ -6,12 +6,12 @@ function renderLineChart(containerId, data, options) {
     container.selectAll('*').remove();
     
     // Console log data for debugging
-    console.log(`${containerId} data:`, {
-        rows: data.length,
-        firstRow: data[0],
-        lastRow: data[data.length - 1],
-        sample: data.slice(0, 5)
-    });
+    // console.log(`${containerId} data:`, {
+    //     rows: data.length,
+    //     firstRow: data[0],
+    //     lastRow: data[data.length - 1],
+    //     sample: data.slice(0, 5)
+    // });
     
     const svg = container.append('svg')
         .attr('width', CHART_WIDTH)
@@ -228,11 +228,11 @@ function renderMultiLineChart(containerId, series, options) {
     // Sort by total attacks (descending)
     seriesWithTotals.sort((a, b) => b.total - a.total);
     
-    console.log(`${containerId} data:`, {
-        seriesCount: seriesWithTotals.length,
-        seriesNames: seriesWithTotals.map(s => s.key),
-        topCountry: seriesWithTotals[0]?.key
-    });
+    // console.log(`${containerId} data:`, {
+    //     seriesCount: seriesWithTotals.length,
+    //     seriesNames: seriesWithTotals.map(s => s.key),
+    //     topCountry: seriesWithTotals[0]?.key
+    // });
     
     // Distinct color palette
     const distinctColors = [

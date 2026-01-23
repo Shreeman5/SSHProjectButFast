@@ -10,11 +10,11 @@ async function loadUnusualCountries() {
         url += `&asn=${encodeURIComponent(state.asn)}`;
     }
     
-    console.log('🟢 Volatile API URL:', url);  // ← ADD THIS
+    // console.log('🟢 Volatile API URL:', url);  // ← ADD THIS
     
     const data = await fetch(url).then(r => r.json());
     
-    console.log('🟢 Volatile API Response:', data);  // ← ADD THIS
+    // console.log('🟢 Volatile API Response:', data);  // ← ADD THIS
     
     const series = d3.group(data, d => d.country);
     const seriesArray = Array.from(series, ([key, values]) => ({ key, values }));

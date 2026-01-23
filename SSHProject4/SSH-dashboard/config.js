@@ -54,6 +54,8 @@ function updateFilterInfo() {
     updateRestoreCountriesButton();
 
     updateRestoreASNsButton();  // ← ADD THIS
+
+    updateRestoreIPsButton();  // ← ADD THIS NEW LINE
 }
 
 // New function to update Go Back button
@@ -136,6 +138,32 @@ function restoreASNs() {
     loadAllCharts();
 }
 
+// ============================================================================
+// ADD THESE TWO FUNCTIONS to config.js
+// Place them right AFTER restoreASNs() function (after line 137)
+// and BEFORE resetFilters() function
+// ============================================================================
+
+// Update Restore IPs button
+function updateRestoreIPsButton() {
+    const restoreContainer = document.getElementById('restore-ips-container');
+    
+    if (state.ip) {
+        restoreContainer.innerHTML = `<button onclick="restoreIPs()" class="restore-btn">Restore All IPs</button>`;
+        restoreContainer.style.display = 'inline-block';
+    } else {
+        restoreContainer.style.display = 'none';
+    }
+}
+
+// Restore all IPs (clear IP filter)
+function restoreIPs() {
+    state.ip = null;
+    updateURL();
+    updateFilterInfo();
+    loadAllCharts();
+}
+
 // Reset all filters
 function resetFilters() {
     state.startDate = '2022-11-01';
@@ -169,7 +197,7 @@ function updateURL() {
 
 // Load all charts
 async function loadAllCharts() {
-    console.log('Loading all charts with state:', state);
+    // console.log('Loading all charts with state:', state);
     
     const chartsToLoad = [
         loadTotalAttacks(),
@@ -197,5 +225,5 @@ async function loadAllCharts() {
     }
     
     await Promise.all(chartsToLoad);
-    console.log('All charts loaded successfully');
+    // console.log('All charts loaded successfully');
 }
