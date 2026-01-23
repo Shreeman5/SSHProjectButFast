@@ -1,0 +1,227 @@
+/* SSH Attack Dashboard Styles */
+
+/* Base Styles */
+body {
+    font-family: Arial, sans-serif;
+    margin: 20px;
+    background: #f5f5f5;
+    overflow-x: auto;
+}
+
+.chart-container {
+    background: white;
+    padding: 20px;
+    margin-bottom: 20px;
+    border-radius: 4px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.chart-title {
+    font-size: 20px;
+    font-weight: bold;
+    margin-bottom: 10px;
+}
+
+.chart-subtitle {
+    font-size: 15px;
+    color: #666;
+    margin-bottom: 15px;
+}
+
+.loading {
+    text-align: center;
+    padding: 40px;
+    color: #999;
+}
+
+/* Chart Elements */
+.axis path,
+.axis line {
+    stroke: #ddd;
+}
+
+.axis text {
+    font-size: 11px;
+}
+
+.line {
+    fill: none;
+    stroke-width: 2px;
+}
+
+.grid line {
+    stroke: #e0e0e0;
+    stroke-opacity: 0.7;
+    shape-rendering: crispEdges;
+}
+
+.grid path {
+    stroke-width: 0;
+}
+
+.tooltip {
+    position: absolute;
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    border-radius: 5px;
+    pointer-events: none;
+    font-size: 12px;
+    opacity: 0;
+    transition: opacity 0.2s;
+    z-index: 1000;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+.brush .selection {
+    fill: steelblue;
+    fill-opacity: 0.3;
+}
+
+/* Filter Info Bar */
+.filter-info {
+    background: #e3f2fd;
+    padding: 10px;
+    margin-bottom: 15px;
+    border-radius: 4px;
+    font-size: 18px;
+}
+
+.reset-btn {
+    background: #2196F3;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 18px;
+    margin-left: 10px;
+}
+
+.reset-btn:hover {
+    background: #1976D2;
+}
+
+/* Go Back Button */
+#go-back-container {
+    display: inline-block;
+}
+
+#go-back-container .filter-btn {
+    background-color: #7c4dff;
+    color: white;
+    border: none;
+    padding: 5px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+    margin: 0;
+}
+
+#go-back-container .filter-btn:hover {
+    background-color: #6a3de8;
+    transform: scale(1.05);
+    box-shadow: 0 2px 8px rgba(124, 77, 255, 0.4);
+}
+
+#go-back-container .filter-btn:active {
+    transform: scale(0.98);
+}
+
+/* Restore Buttons - Shared Styles */
+#restore-countries-container,
+#restore-asns-container,
+#restore-ips-container,
+#restore-usernames-container {
+    display: inline-block;
+}
+
+/* Restore Countries/ASNs/IPs Button (Purple) */
+#restore-countries-container .restore-btn,
+#restore-asns-container .restore-btn,
+#restore-ips-container .restore-btn {
+    background-color: #7c4dff;
+    color: white;
+    border: none;
+    padding: 5px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+#restore-countries-container .restore-btn:hover,
+#restore-asns-container .restore-btn:hover,
+#restore-ips-container .restore-btn:hover {
+    background-color: #6a3de8;
+    transform: scale(1.05);
+    box-shadow: 0 2px 8px rgba(124, 77, 255, 0.4);
+}
+
+#restore-countries-container .restore-btn:active,
+#restore-asns-container .restore-btn:active,
+#restore-ips-container .restore-btn:active {
+    transform: scale(0.98);
+}
+
+/* Restore Usernames Button (Different Purple) */
+#restore-usernames-container .restore-btn {
+    background-color: #9467bd;
+    color: white;
+    padding: 5px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+#restore-usernames-container .restore-btn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 2px 8px rgba(148, 103, 189, 0.3);
+}
+
+#restore-usernames-container .restore-btn:active {
+    transform: scale(0.95);
+}
+
+/* Toggle Button (Country Chart) */
+.toggle-btn {
+    padding: 6px 14px;
+    border-radius: 5px;
+    font-size: 12px;
+    font-weight: 500;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.toggle-volatile {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.toggle-volatile:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+}
+
+.toggle-attacking {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    color: white;
+}
+
+.toggle-attacking:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(245, 87, 108, 0.3);
+}
+
+.toggle-btn:active {
+    transform: translateY(0);
+}
