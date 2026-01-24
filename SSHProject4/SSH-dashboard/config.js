@@ -15,7 +15,10 @@ let state = {
     username: null,
     asn: null,
     dateRangeHistory: [],
-    countryViewMode: 'attacking'
+    countryViewMode: 'attacking',
+    ipViewMode: 'attacking',           // ← ADD THIS
+    usernameViewMode: 'attacking',     // ← ADD THIS
+    asnViewMode: 'attacking'           // ← ADD THIS
 };
 
 // Color scale

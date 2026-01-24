@@ -1,37 +1,29 @@
 async function loadASNAttacks() {
-    let url = `${API_BASE}/asn_attacks?start=${state.startDate}&end=${state.endDate}`;
+    const showVolatile = state.asnViewMode === 'volatile';
+    const endpoint = showVolatile ? 'asn_attacks_volatile' : 'asn_attacks';
+    let url = `${API_BASE}/${endpoint}?start=${state.startDate}&end=${state.endDate}`;
     
-    // Filter by country if selected
     if (state.country) {
         url += `&country=${encodeURIComponent(state.country)}`;
     }
-    
-    // Filter by ASN if selected
     if (state.asn) {
         url += `&asn=${encodeURIComponent(state.asn)}`;
     }
-    
-    // Add IP filter
     if (state.ip) {
         url += `&ip=${encodeURIComponent(state.ip)}`;
     }
-    
-    // Add username filter
     if (state.username) {
         url += `&username=${encodeURIComponent(state.username)}`;
     }
     
     const data = await fetch(url).then(r => r.json());
-    
     const series = d3.group(data, d => d.asn_name);
     const seriesArray = Array.from(series, ([key, values]) => ({ key, values }));
     
     renderMultiLineChart('asnchart', seriesArray, {
         yKey: 'attacks',
         onClick: (asnName) => {
-            // Left click: toggle filter to this ASN
             if (state.asn === asnName) {
-                // Click again to unfilter
                 state.asn = null;
             } else {
                 state.asn = asnName;
@@ -41,4 +33,22 @@ async function loadASNAttacks() {
             loadAllCharts();
         }
     });
+    
+    updateASNToggleButton();
+}
+
+function toggleASNView() {
+    state.asnViewMode = state.asnViewMode === 'volatile' ? 'attacking' : 'volatile';
+    loadASNAttacks();
+}
+
+function updateASNToggleButton() {
+    const toggleBtn = document.getElementById('asn-toggle-btn');
+    if (state.asnViewMode === 'volatile') {
+        toggleBtn.textContent = 'Show Attacking ASNs';
+        toggleBtn.className = 'toggle-btn toggle-attacking';
+    } else {
+        toggleBtn.textContent = 'Show Volatile ASNs';
+        toggleBtn.className = 'toggle-btn toggle-volatile';
+    }
 }

@@ -16,8 +16,11 @@ from endpoints.total_attacks import register_total_attacks
 from endpoints.country_attacks import register_country_attacks
 from endpoints.unusual_countries import register_unusual_countries
 from endpoints.ip_attacks import register_ip_attacks
+from endpoints.ip_attacks_volatile import register_ip_attacks_volatile
 from endpoints.username_attacks import register_username_attacks
+from endpoints.username_attacks_volatile import register_username_attacks_volatile
 from endpoints.asn_attacks import register_asn_attacks
+from endpoints.asn_attacks_volatile import register_asn_attacks_volatile
 from endpoints.date_range import register_date_range
 from endpoints.index import register_index
 
@@ -26,8 +29,11 @@ register_total_attacks(app)
 register_country_attacks(app)
 register_unusual_countries(app)
 register_ip_attacks(app)
+register_ip_attacks_volatile(app)
 register_username_attacks(app)
+register_username_attacks_volatile(app)
 register_asn_attacks(app)
+register_asn_attacks_volatile(app)
 register_date_range(app)
 register_index(app)
 
