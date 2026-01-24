@@ -7,7 +7,12 @@
     <script src="https://d3js.org/d3.v7.min.js"></script>
 </head>
 <body>
-    <h1>SSH Attack Analysis Dashboard</h1>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h1>SSH Attack Analysis Dashboard</h1>
+        <a href="discovery.html" style="padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-decoration: none; border-radius: 8px; font-weight: 600; box-shadow: 0 2px 8px rgba(0,0,0,0.2);">
+            🔍 Discover All Entities →
+        </a>
+    </div>
     
     <div id="filter-info" class="filter-info" style="display:none;">
         <span id="filter-text"></span>
@@ -38,10 +43,10 @@
         <div id="countrychart"></div>
     </div>
     
-    <!-- ASN Chart - UPDATE THIS -->
+    <!-- 3. ASN Chart -->
     <div id="chart6" class="chart-container">
         <div class="chart-title" style="display: flex; align-items: center; gap: 10px;">
-            <span>Top 10 ASN Organizations</span>
+            <span>Top 10 Attacking ASN Organizations</span>
             <button id="asn-toggle-btn" onclick="toggleASNView()" 
                     class="toggle-btn toggle-volatile">
                 Show Volatile ASNs
@@ -51,11 +56,11 @@
         <div class="chart-subtitle">Hover legend to highlight | Left-click to filter | Right-click to cross out</div>
         <div id="asnchart"></div>
     </div>
-
-    <!-- IP Chart - UPDATE THIS -->
+    
+    <!-- 4. IP Chart -->
     <div id="chart4" class="chart-container">
         <div class="chart-title" style="display: flex; align-items: center; gap: 10px;">
-            <span>Top 10 IPs</span>
+            <span>Top 10 Attacking IPs</span>
             <button id="ip-toggle-btn" onclick="toggleIPView()" 
                     class="toggle-btn toggle-volatile">
                 Show Volatile IPs
@@ -65,11 +70,11 @@
         <div class="chart-subtitle">Hover legend to highlight | Left-click to filter | Right-click to cross out</div>
         <div id="ipchart"></div>
     </div>
-
-    <!-- Username Chart - UPDATE THIS -->
+    
+    <!-- 5. Username Chart -->
     <div id="chart5" class="chart-container">
         <div class="chart-title" style="display: flex; align-items: center; gap: 10px;">
-            <span>Top 10 Usernames</span>
+            <span>Top 10 Attacking Usernames</span>
             <button id="username-toggle-btn" onclick="toggleUsernameView()" 
                     class="toggle-btn toggle-volatile">
                 Show Volatile Usernames

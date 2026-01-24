@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Attack Discovery - All Entities</title>
+    <link rel="stylesheet" href="discovery-styles.css">
+</head>
+<body>
+    <div class="header">
+        <h1>🔍 Attack Discovery Dashboard</h1>
+        <p>Explore all attacking entities beyond the top 10</p>
+        <a href="dashboard.html" class="back-link">← Back to Time Series Charts</a>
+    </div>
+
+    <!-- Dimension Selector -->
+    <div class="dimension-selector">
+        <button class="dim-btn active" onclick="switchDimension('country')">
+            🌍 Countries
+        </button>
+        <button class="dim-btn" onclick="switchDimension('ip')">
+            📍 IP Addresses
+        </button>
+        <button class="dim-btn" onclick="switchDimension('asn')">
+            🏢 ASN Organizations
+        </button>
+        <button class="dim-btn" onclick="switchDimension('username')">
+            👤 Usernames
+        </button>
+    </div>
+
+    <!-- Quick Stats -->
+    <div id="quick-stats" class="quick-stats">
+        <div class="stat-card">
+            <div class="stat-value" id="total-entities">-</div>
+            <div class="stat-label">Total Entities</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="top10-pct">-</div>
+            <div class="stat-label">Top 10 Share</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="active-recent">-</div>
+            <div class="stat-label">Active Last 7 Days</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="new-threats">-</div>
+            <div class="stat-label">New This Week</div>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="filters">
+        <label>
+            Min Attacks:
+            <input type="number" id="min-attacks" value="0" min="0" onchange="applyFilters()">
+        </label>
+        <label>
+            Search:
+            <input type="text" id="search-box" placeholder="Search by name..." oninput="applyFilters()">
+        </label>
+        <button class="reset-filter-btn" onclick="resetFilters()">Reset Filters</button>
+    </div>
+
+    <!-- View Tabs -->
+    <div class="tabs">
+        <button class="tab active" onclick="switchTab('most-active')">
+            📊 Most Active
+        </button>
+        <button class="tab" onclick="switchTab('most-volatile')">
+            ⚡ Most Volatile
+        </button>
+        <button class="tab" onclick="switchTab('recently-active')">
+            🕒 Recently Active
+        </button>
+        <button class="tab" onclick="switchTab('new-threats')">
+            🆕 New Threats
+        </button>
+        <button class="tab" onclick="switchTab('persistent')">
+            🔄 Most Persistent
+        </button>
+    </div>
+
+    <!-- Data Table -->
+    <div class="table-container">
+        <table id="data-table">
+            <thead>
+                <tr id="table-header">
+                    <!-- Headers will be dynamically generated -->
+                </tr>
+            </thead>
+            <tbody id="table-body">
+                <tr>
+                    <td colspan="10" style="text-align: center; padding: 40px;">
+                        Loading data...
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination -->
+    <div class="pagination">
+        <button id="prev-btn" onclick="previousPage()" disabled>← Previous</button>
+        <span id="page-info">Page 1 of 1</span>
+        <button id="next-btn" onclick="nextPage()" disabled>Next →</button>
+        <select id="page-size" onchange="changePageSize()">
+            <option value="25">25 per page</option>
+            <option value="50" selected>50 per page</option>
+            <option value="100">100 per page</option>
+            <option value="250">250 per page</option>
+        </select>
+    </div>
+
+    <script src="discovery.js"></script>
+</body>
+</html>
