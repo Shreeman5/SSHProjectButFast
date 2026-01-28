@@ -225,3 +225,23 @@ body {
 .toggle-btn:active {
     transform: translateY(0);
 }
+
+
+/* Disabled restore button style */
+.restore-btn-disabled {
+    background: #cccccc !important;
+    color: #666666 !important;
+    cursor: not-allowed !important;
+    opacity: 0.6;
+}
+
+.restore-btn-disabled:hover {
+    background: #cccccc !important;
+    transform: none !important;
+    box-shadow: none !important;
+}
+
+/* Optional: Add a visual indicator on hover */
+.restore-btn[disabled]:hover {
+    cursor: not-allowed;
+}
