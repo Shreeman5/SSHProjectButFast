@@ -4,11 +4,92 @@ const API_BASE = 'http://localhost:5000';
 
 // State
 let currentDimension = 'country';
-let currentTab = 'most-active';
 let allData = [];
 let filteredData = [];
 let currentPage = 1;
 let pageSize = 50;
+
+// Multi-column sorting state
+let sortColumns = ['total_attacks'];  // Array of columns to sort by
+let sortDirection = 'desc';  // Single direction for now (all columns same direction)
+let debugRankings = null;  // Store ranking debug info
+
+// Toggle debug view
+function toggleDebug() {
+    const debugSection = document.getElementById('debug-section');
+    const showBtn = document.getElementById('show-debug-btn');
+    
+    if (debugSection.style.display === 'none') {
+        debugSection.style.display = 'block';
+        showBtn.style.display = 'none';
+        updateDebugView();
+    } else {
+        debugSection.style.display = 'none';
+        showBtn.style.display = 'block';
+    }
+}
+
+// Update debug view with current ranking info
+function updateDebugView() {
+    const debugContent = document.getElementById('debug-content');
+    
+    if (!debugRankings) {
+        debugContent.innerHTML = '<p>No multi-column sort active. Select 2+ columns to see ranking breakdown.</p>';
+        return;
+    }
+    
+    const { rankMaps, avgRanks, columnLabels } = debugRankings;
+    
+    // Create header
+    let html = '<div style="margin-bottom: 15px; padding: 10px; background: #f8f9fa; border-radius: 4px;">';
+    html += `<strong>Sorting by ${sortColumns.length} columns:</strong> ${columnLabels.join(', ')}<br>`;
+    html += `<strong>Direction:</strong> ${sortDirection === 'desc' ? 'Best to Worst' : 'Worst to Best'}`;
+    html += '</div>';
+    
+    // Create table
+    html += '<table style="width: 100%; border-collapse: collapse; background: white;">';
+    html += '<thead style="background: #e9ecef; position: sticky; top: 0;">';
+    html += '<tr>';
+    html += '<th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Final Rank</th>';
+    html += '<th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Country</th>';
+    
+    columnLabels.forEach(label => {
+        html += `<th style="padding: 8px; border: 1px solid #ddd; text-align: center;">${label}<br>Rank</th>`;
+    });
+    
+    html += '<th style="padding: 8px; border: 1px solid #ddd; text-align: center; background: #fff3cd;">Avg Rank</th>';
+    html += '</tr>';
+    html += '</thead>';
+    html += '<tbody>';
+    
+    // Show top 50 countries
+    const topCountries = avgRanks.slice(0, 50);
+    
+    topCountries.forEach((entry, idx) => {
+        const { item, avgRank, ranks } = entry;
+        const finalRank = idx + 1;
+        
+        html += '<tr>';
+        html += `<td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">#${finalRank}</td>`;
+        html += `<td style="padding: 8px; border: 1px solid #ddd;"><strong>${item.country}</strong></td>`;
+        
+        ranks.forEach(rank => {
+            html += `<td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${rank}</td>`;
+        });
+        
+        html += `<td style="padding: 8px; border: 1px solid #ddd; text-align: center; background: #fff3cd; font-weight: bold;">${avgRank.toFixed(2)}</td>`;
+        html += '</tr>';
+    });
+    
+    html += '</tbody>';
+    html += '</table>';
+    
+    if (avgRanks.length > 50) {
+        html += `<p style="margin-top: 10px; color: #666; font-style: italic;">Showing top 50 of ${avgRanks.length} countries</p>`;
+    }
+    
+    debugContent.innerHTML = html;
+}
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -20,12 +101,17 @@ async function loadData() {
     try {
         const response = await fetch(`${API_BASE}/api/${currentDimension}_summary?start=2022-11-01&end=2023-01-08`);
         allData = await response.json();
+        
+        // Default sort by total_attacks descending
+        sortColumns = ['total_attacks'];
+        sortDirection = 'desc';
+        
         applyFilters();
         updateQuickStats();
     } catch (error) {
         console.error('Error loading data:', error);
         document.getElementById('table-body').innerHTML = 
-            '<tr><td colspan="10" style="text-align: center; padding: 40px; color: red;">Error loading data</td></tr>';
+            '<tr><td colspan="15" style="text-align: center; padding: 40px; color: red;">Error loading data</td></tr>';
     }
 }
 
@@ -41,18 +127,6 @@ function switchDimension(dimension) {
     loadData();
 }
 
-// Switch tab
-function switchTab(tab) {
-    currentTab = tab;
-    currentPage = 1;
-    
-    // Update active tab
-    document.querySelectorAll('.tab').forEach(btn => btn.classList.remove('active'));
-    event.target.classList.add('active');
-    
-    applyFilters();
-}
-
 // Apply filters and sorting
 function applyFilters() {
     const minAttacks = parseInt(document.getElementById('min-attacks').value) || 0;
@@ -65,7 +139,7 @@ function applyFilters() {
         return matchesMin && matchesSearch;
     });
     
-    // Sort by current tab
+    // Sort by current column(s) and direction
     sortData();
     
     // Reset to page 1
@@ -75,25 +149,202 @@ function applyFilters() {
     renderTable();
 }
 
-// Sort data based on current tab
-function sortData() {
-    switch (currentTab) {
-        case 'most-active':
-            filteredData.sort((a, b) => b.total_attacks - a.total_attacks);
-            break;
-        case 'most-volatile':
-            filteredData.sort((a, b) => b.volatility - a.volatility);
-            break;
-        case 'recently-active':
-            filteredData.sort((a, b) => new Date(b.last_seen) - new Date(a.last_seen));
-            break;
-        case 'new-threats':
-            filteredData.sort((a, b) => new Date(b.first_seen) - new Date(a.first_seen));
-            break;
-        case 'persistent':
-            filteredData.sort((a, b) => b.persistence_pct - a.persistence_pct);
-            break;
+// Toggle column in sort list
+function sortByColumn(column, event) {
+    // Check for Ctrl/Cmd key for multi-column sorting
+    const isMultiSelect = event.ctrlKey || event.metaKey;
+    
+    if (isMultiSelect) {
+        // Multi-column mode: add/remove column from list
+        const index = sortColumns.indexOf(column);
+        if (index > -1) {
+            // Column already in list, remove it
+            sortColumns.splice(index, 1);
+            
+            // If we removed the last column, add back total_attacks as default
+            if (sortColumns.length === 0) {
+                sortColumns = ['total_attacks'];
+            }
+        } else {
+            // Add column to sort list
+            sortColumns.push(column);
+        }
+    } else {
+        // Single-column mode: replace sort list with this column
+        if (sortColumns.length === 1 && sortColumns[0] === column) {
+            // Same column, toggle direction
+            sortDirection = sortDirection === 'desc' ? 'asc' : 'desc';
+        } else {
+            // New column(s), reset to descending
+            sortColumns = [column];
+            sortDirection = 'desc';
+        }
     }
+    
+    sortData();
+    renderTable();
+}
+
+// Calculate ranks for each column (with tie handling)
+function calculateRanks(data, column) {
+    // Determine sort direction based on column type
+    // For most metrics: higher value = better (rank 1)
+    // For dates: depends on semantic meaning
+    let sortAscending = false;
+    
+    if (column === 'first_seen') {
+        // Earlier first_seen = better (lower rank) - older/more established threats
+        sortAscending = true;
+    } else if (column === 'last_seen') {
+        // More recent last_seen = better (lower rank) - currently active threats
+        sortAscending = false;
+    } else if (column === 'country') {
+        // For country names, alphabetical A-Z = better (subjective, but consistent)
+        sortAscending = true;
+    }
+    // All other numeric columns: higher value = better (lower rank)
+    
+    // Sort by column value
+    const sorted = [...data].sort((a, b) => {
+        let aVal = a[column] ?? (sortAscending ? Infinity : -Infinity);
+        let bVal = b[column] ?? (sortAscending ? Infinity : -Infinity);
+        
+        // Handle date strings
+        if (column === 'first_seen' || column === 'last_seen') {
+            aVal = new Date(aVal);
+            bVal = new Date(bVal);
+        }
+        
+        // Handle string comparison
+        if (column === 'country') {
+            aVal = aVal.toString().toLowerCase();
+            bVal = bVal.toString().toLowerCase();
+        }
+        
+        if (sortAscending) {
+            return aVal > bVal ? 1 : aVal < bVal ? -1 : 0;
+        } else {
+            return bVal > aVal ? 1 : bVal < aVal ? -1 : 0;
+        }
+    });
+    
+    // Assign ranks with tie handling
+    const ranks = new Map();
+    let currentRank = 1;
+    let previousValue = null;
+    let previousValueStr = null;
+    
+    sorted.forEach((item, index) => {
+        let value = item[column];
+        let valueStr;
+        
+        // Convert to comparable string for tie detection
+        if (column === 'first_seen' || column === 'last_seen') {
+            valueStr = new Date(value).getTime().toString();
+        } else {
+            valueStr = String(value);
+        }
+        
+        if (valueStr === previousValueStr) {
+            // Same value as previous, same rank (tie)
+            // Don't increment currentRank
+        } else {
+            // New value, set rank to current position (1-indexed)
+            currentRank = index + 1;
+        }
+        
+        ranks.set(item.country, currentRank);
+        previousValueStr = valueStr;
+    });
+    
+    return ranks;
+}
+
+// Sort data based on current sortColumns (average ranking method)
+function sortData() {
+    if (sortColumns.length === 1) {
+        // Single column sort - simple
+        debugRankings = null;  // Clear debug info
+        
+        filteredData.sort((a, b) => {
+            let aVal = a[sortColumns[0]];
+            let bVal = b[sortColumns[0]];
+            
+            // Handle null/undefined values
+            if (aVal === null || aVal === undefined) aVal = sortDirection === 'desc' ? -Infinity : Infinity;
+            if (bVal === null || bVal === undefined) bVal = sortDirection === 'desc' ? -Infinity : Infinity;
+            
+            // Handle date strings
+            if (sortColumns[0] === 'first_seen' || sortColumns[0] === 'last_seen') {
+                aVal = new Date(aVal);
+                bVal = new Date(bVal);
+            }
+            
+            // Handle string comparison (for country name)
+            if (sortColumns[0] === 'country') {
+                aVal = aVal.toLowerCase();
+                bVal = bVal.toLowerCase();
+            }
+            
+            // Compare
+            if (sortDirection === 'desc') {
+                return bVal > aVal ? 1 : bVal < aVal ? -1 : 0;
+            } else {
+                return aVal > bVal ? 1 : aVal < bVal ? -1 : 0;
+            }
+        });
+    } else {
+        // Multi-column sort - average ranking method
+        // Step 1: Calculate ranks for each column
+        const rankMaps = sortColumns.map(col => calculateRanks(filteredData, col));
+        
+        // Get column labels for debug
+        const columnLabels = sortColumns.map(col => getColumnLabel(col));
+        
+        // Step 2: Calculate average rank for each country
+        const avgRanks = filteredData.map(item => {
+            const ranks = rankMaps.map(rankMap => rankMap.get(item.country));
+            const avgRank = ranks.reduce((sum, rank) => sum + rank, 0) / ranks.length;
+            return { item, avgRank, ranks };  // Store individual ranks for debug
+        });
+        
+        // Step 3: Sort by average rank
+        avgRanks.sort((a, b) => {
+            if (sortDirection === 'desc') {
+                return a.avgRank - b.avgRank;  // Lower average rank = better
+            } else {
+                return b.avgRank - a.avgRank;  // Higher average rank = better
+            }
+        });
+        
+        // Store debug info
+        debugRankings = { rankMaps, avgRanks, columnLabels };
+        
+        // Update debug view if it's visible
+        if (document.getElementById('debug-section').style.display !== 'none') {
+            updateDebugView();
+        }
+        
+        // Update filteredData with sorted order
+        filteredData = avgRanks.map(x => x.item);
+    }
+}
+
+// Get human-readable label for column
+function getColumnLabel(column) {
+    const labels = {
+        'country': 'Country',
+        'total_attacks': 'Total Attacks',
+        'avg_daily': 'Avg Daily',
+        'persistence_pct': 'Persistence %',
+        'max_absolute_change': 'Max Absolute Δ',
+        'max_pct_change': 'Max % Δ',
+        'recent_attacks': 'Recent (7d)',
+        'first_seen': 'First Seen',
+        'last_seen': 'Last Seen',
+        'max_daily': 'Max Daily'
+    };
+    return labels[column] || column;
 }
 
 // Get entity name based on dimension
@@ -119,64 +370,115 @@ function renderTable() {
     const tbody = document.getElementById('table-body');
     
     if (pageData.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="10" style="text-align: center; padding: 40px;">No data found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="15" style="text-align: center; padding: 40px;">No data found</td></tr>';
         return;
     }
     
     tbody.innerHTML = pageData.map((item, idx) => {
         const rank = startIdx + idx + 1;
-        const badges = getBadges(item, rank);
         
-        return `
-            <tr>
-                <td>${rank}</td>
-                <td><strong>${getEntityName(item)}</strong> ${badges}</td>
-                ${currentDimension === 'ip' ? `<td>${item.country || 'Unknown'}</td>` : ''}
-                ${currentDimension === 'ip' ? `<td>${truncate(item.asn_name, 30)}</td>` : ''}
-                ${['asn', 'username'].includes(currentDimension) ? `<td>${item.countries}</td>` : ''}
-                <td class="number">${formatNumber(item.total_attacks)}</td>
-                <td class="number">${formatNumber(item.avg_daily)}</td>
-                <td>${item.active_days}</td>
-                <td>${item.first_seen}</td>
-                <td>${item.last_seen}</td>
-                <td class="number">${item.volatility}%</td>
-                <td class="number">${item.persistence_pct}%</td>
-            </tr>
-        `;
+        if (currentDimension === 'country') {
+            return `
+                <tr>
+                    <td>${rank}</td>
+                    <td><strong>${item.country}</strong></td>
+                    <td class="number">${formatNumber(item.total_attacks)}</td>
+                    <td class="number">${formatNumber(item.avg_daily)}</td>
+                    <td class="number">${item.persistence_pct}% (${item.active_days}d)</td>
+                    <td class="number">${formatNumber(item.max_absolute_change)}</td>
+                    <td class="number">${formatNumber(item.max_pct_change)}%</td>
+                    <td class="number">${formatNumber(item.recent_attacks)}</td>
+                    <td>${item.first_seen}</td>
+                    <td>${item.last_seen}</td>
+                    <td class="number">${formatNumber(item.max_daily)}</td>
+                </tr>
+            `;
+        } else {
+            // Default rendering for other dimensions
+            return `
+                <tr>
+                    <td>${rank}</td>
+                    <td><strong>${getEntityName(item)}</strong></td>
+                    ${currentDimension === 'ip' ? `<td>${item.country || 'Unknown'}</td>` : ''}
+                    ${currentDimension === 'ip' ? `<td>${truncate(item.asn_name, 30)}</td>` : ''}
+                    ${['asn', 'username'].includes(currentDimension) ? `<td>${item.countries || '-'}</td>` : ''}
+                    <td class="number">${formatNumber(item.total_attacks)}</td>
+                    <td class="number">${formatNumber(item.avg_daily)}</td>
+                    <td>${item.active_days}</td>
+                    <td>${item.first_seen}</td>
+                    <td>${item.last_seen}</td>
+                    <td class="number">${(item.volatility || 0)}%</td>
+                    <td class="number">${(item.persistence_pct || 0)}%</td>
+                </tr>
+            `;
+        }
     }).join('');
     
     // Update pagination
     updatePagination();
 }
 
-// Render table header
+// Render table header with sort indicators
 function renderHeader() {
     const header = document.getElementById('table-header');
     
-    let columns = [
-        'Rank',
-        getDimensionLabel()
-    ];
-    
-    if (currentDimension === 'ip') {
-        columns.push('Country', 'ASN');
+    if (currentDimension === 'country') {
+        const columns = [
+            { label: 'Rank', key: null },
+            { label: 'Country', key: 'country' },
+            { label: 'Total Attacks', key: 'total_attacks' },
+            { label: 'Avg Daily', key: 'avg_daily' },
+            { label: 'Persistence', key: 'persistence_pct' },
+            { label: 'Max Absolute Δ', key: 'max_absolute_change' },
+            { label: 'Max % Δ', key: 'max_pct_change' },
+            { label: 'Recent (7d)', key: 'recent_attacks' },
+            { label: 'First Seen', key: 'first_seen' },
+            { label: 'Last Seen', key: 'last_seen' },
+            { label: 'Max Daily', key: 'max_daily' }
+        ];
+        
+        header.innerHTML = columns.map(col => {
+            if (!col.key) {
+                return `<th>${col.label}</th>`;
+            }
+            
+            const isInSortList = sortColumns.includes(col.key);
+            const sortIndex = sortColumns.indexOf(col.key);
+            const indicator = isInSortList ? 
+                (sortColumns.length === 1 ? 
+                    (sortDirection === 'desc' ? ' ▼' : ' ▲') : 
+                    ` [${sortIndex + 1}]`) : 
+                '';
+            const sortClass = isInSortList ? 'sorted' : '';
+            
+            return `<th class="${sortClass}" onclick="sortByColumn('${col.key}', event)" style="cursor: pointer; user-select: none;">${col.label}${indicator}</th>`;
+        }).join('');
+    } else {
+        let columns = [
+            'Rank',
+            getDimensionLabel()
+        ];
+        
+        if (currentDimension === 'ip') {
+            columns.push('Country', 'ASN');
+        }
+        
+        if (currentDimension === 'asn' || currentDimension === 'username') {
+            columns.push('Countries');
+        }
+        
+        columns.push(
+            'Total Attacks',
+            'Avg Daily',
+            'Active Days',
+            'First Seen',
+            'Last Seen',
+            'Volatility',
+            'Persistence'
+        );
+        
+        header.innerHTML = columns.map(col => `<th>${col}</th>`).join('');
     }
-    
-    if (currentDimension === 'asn' || currentDimension === 'username') {
-        columns.push('Countries');
-    }
-    
-    columns.push(
-        'Total Attacks',
-        'Avg Daily',
-        'Active Days',
-        'First Seen',
-        'Last Seen',
-        'Volatility',
-        'Persistence'
-    );
-    
-    header.innerHTML = columns.map(col => `<th>${col}</th>`).join('');
 }
 
 // Get dimension label
@@ -190,30 +492,6 @@ function getDimensionLabel() {
     return labels[currentDimension];
 }
 
-// Get badges for entity
-function getBadges(item, rank) {
-    const badges = [];
-    
-    if (rank <= 10) {
-        badges.push('<span class="badge badge-top10">🔥 TOP 10</span>');
-    }
-    
-    if (item.volatility > 100) {
-        badges.push('<span class="badge badge-volatile">⚡ VOLATILE</span>');
-    }
-    
-    const daysSinceFirstSeen = Math.floor((new Date() - new Date(item.first_seen)) / (1000 * 60 * 60 * 24));
-    if (daysSinceFirstSeen <= 7) {
-        badges.push('<span class="badge badge-new">🆕 NEW</span>');
-    }
-    
-    if (item.persistence_pct >= 80) {
-        badges.push('<span class="badge badge-persistent">🔄 PERSISTENT</span>');
-    }
-    
-    return badges.join(' ');
-}
-
 // Update quick stats
 function updateQuickStats() {
     const totalEntities = allData.length;
@@ -224,9 +502,14 @@ function updateQuickStats() {
     const top10Pct = grandTotal > 0 ? ((top10Total / grandTotal) * 100).toFixed(1) : 0;
     
     // Count active in last 7 days
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    const activeRecent = allData.filter(item => new Date(item.last_seen) >= sevenDaysAgo).length;
+    let activeRecent = 0;
+    if (currentDimension === 'country' && allData[0]?.recent_attacks !== undefined) {
+        activeRecent = allData.filter(item => item.recent_attacks > 0).length;
+    } else {
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        activeRecent = allData.filter(item => new Date(item.last_seen) >= sevenDaysAgo).length;
+    }
     
     // Count new in last 7 days
     const newThreats = allData.filter(item => {
