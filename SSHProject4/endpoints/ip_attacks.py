@@ -21,7 +21,65 @@ def register_ip_attacks(app):
         
         conn = get_db()
         
-        if ip_filter:
+        if username_filter:
+            # Username filter takes priority - respect all other filters
+            where_conditions = [f"u.username = '{username_filter}'"]
+            
+            if ip_filter:
+                where_conditions.append(f"u.IP = '{ip_filter}'")
+            if country_filter:
+                where_conditions.append(f"u.country = '{country_filter}'")
+            if asn_filter:
+                where_conditions.append(f"u.asn_name = '{asn_filter}'")
+            
+            where_clause = " AND ".join(where_conditions)
+            
+            # If ip_filter is set, show only that IP
+            # Otherwise, show top IPs for this username
+            if ip_filter:
+                query = f"""
+                    WITH date_range AS (
+                        SELECT UNNEST(generate_series(DATE '{start}', DATE '{end}', INTERVAL 1 DAY))::DATE as date
+                    )
+                    SELECT 
+                        d.date::VARCHAR as date,
+                        '{ip_filter}' as IP,
+                        COALESCE(MAX(u.country), 'Unknown') as country,
+                        COALESCE(SUM(u.attacks), 0) as attacks
+                    FROM date_range d
+                    LEFT JOIN daily_ip_username_attacks u
+                        ON d.date = u.date AND {where_clause}
+                    GROUP BY d.date
+                    ORDER BY d.date
+                """
+            else:
+                query = f"""
+                    WITH top_ips AS (
+                        SELECT IP
+                        FROM daily_ip_username_attacks u
+                        WHERE date BETWEEN '{start}' AND '{end}' AND {where_clause}
+                        GROUP BY IP
+                        ORDER BY SUM(u.attacks) DESC
+                        LIMIT 10
+                    ),
+                    date_range AS (
+                        SELECT UNNEST(generate_series(DATE '{start}', DATE '{end}', INTERVAL 1 DAY))::DATE as date
+                    ),
+                    complete_grid AS (
+                        SELECT d.date, t.IP FROM date_range d CROSS JOIN top_ips t
+                    )
+                    SELECT 
+                        g.date::VARCHAR as date,
+                        g.IP,
+                        COALESCE(MAX(u.country), 'Mixed') as country,
+                        COALESCE(SUM(u.attacks), 0) as attacks
+                    FROM complete_grid g
+                    LEFT JOIN daily_ip_username_attacks u
+                        ON g.date = u.date AND g.IP = u.IP AND {where_clause}
+                    GROUP BY g.date, g.IP
+                    ORDER BY g.date, attacks DESC
+                """
+        elif ip_filter:
             query = f"""
                 WITH date_range AS (
                     SELECT UNNEST(generate_series(DATE '{start}', DATE '{end}', INTERVAL 1 DAY))::DATE as date
@@ -35,33 +93,6 @@ def register_ip_attacks(app):
                 LEFT JOIN daily_ip_attacks i ON d.date = i.date AND i.IP = '{ip_filter}'
                 GROUP BY d.date
                 ORDER BY d.date
-            """
-        elif username_filter:
-            query = f"""
-                WITH top_ips AS (
-                    SELECT IP
-                    FROM daily_ip_username_attacks
-                    WHERE date BETWEEN '{start}' AND '{end}' AND username = '{username_filter}'
-                    GROUP BY IP
-                    ORDER BY SUM(attacks) DESC
-                    LIMIT 10
-                ),
-                date_range AS (
-                    SELECT UNNEST(generate_series(DATE '{start}', DATE '{end}', INTERVAL 1 DAY))::DATE as date
-                ),
-                complete_grid AS (
-                    SELECT d.date, t.IP FROM date_range d CROSS JOIN top_ips t
-                )
-                SELECT 
-                    g.date::VARCHAR as date,
-                    g.IP,
-                    COALESCE(MAX(u.country), 'Mixed') as country,
-                    COALESCE(SUM(u.attacks), 0) as attacks
-                FROM complete_grid g
-                LEFT JOIN daily_ip_username_attacks u
-                    ON g.date = u.date AND g.IP = u.IP AND u.username = '{username_filter}'
-                GROUP BY g.date, g.IP
-                ORDER BY g.date, attacks DESC
             """
         elif asn_filter and country_filter:
             query = f"""

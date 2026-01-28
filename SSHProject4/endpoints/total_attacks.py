@@ -21,20 +21,19 @@ def register_total_attacks(app):
         
         conn = get_db()
         
-        if ip_filter:
-            result = conn.execute(f"""
-                WITH date_range AS (
-                    SELECT UNNEST(generate_series(DATE '{start}', DATE '{end}', INTERVAL 1 DAY))::DATE as date
-                )
-                SELECT 
-                    d.date::VARCHAR as date,
-                    COALESCE(SUM(i.attacks), 0) as attacks
-                FROM date_range d
-                LEFT JOIN daily_ip_attacks i ON d.date = i.date AND i.IP = '{ip_filter}'
-                GROUP BY d.date
-                ORDER BY d.date
-            """).fetchall()
-        elif username_filter:
+        if username_filter:
+            # Username filter takes priority - respect all other filters
+            where_conditions = [f"u.username = '{username_filter}'"]
+            
+            if ip_filter:
+                where_conditions.append(f"u.IP = '{ip_filter}'")
+            if country_filter:
+                where_conditions.append(f"u.country = '{country_filter}'")
+            if asn_filter:
+                where_conditions.append(f"u.asn_name = '{asn_filter}'")
+            
+            where_clause = " AND ".join(where_conditions)
+            
             result = conn.execute(f"""
                 WITH date_range AS (
                     SELECT UNNEST(generate_series(DATE '{start}', DATE '{end}', INTERVAL 1 DAY))::DATE as date
@@ -44,7 +43,20 @@ def register_total_attacks(app):
                     COALESCE(SUM(u.attacks), 0) as attacks
                 FROM date_range d
                 LEFT JOIN daily_ip_username_attacks u
-                    ON d.date = u.date AND u.username = '{username_filter}'
+                    ON d.date = u.date AND {where_clause}
+                GROUP BY d.date
+                ORDER BY d.date
+            """).fetchall()
+        elif ip_filter:
+            result = conn.execute(f"""
+                WITH date_range AS (
+                    SELECT UNNEST(generate_series(DATE '{start}', DATE '{end}', INTERVAL 1 DAY))::DATE as date
+                )
+                SELECT 
+                    d.date::VARCHAR as date,
+                    COALESCE(SUM(i.attacks), 0) as attacks
+                FROM date_range d
+                LEFT JOIN daily_ip_attacks i ON d.date = i.date AND i.IP = '{ip_filter}'
                 GROUP BY d.date
                 ORDER BY d.date
             """).fetchall()

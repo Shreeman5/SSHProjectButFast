@@ -21,7 +21,35 @@ def register_username_attacks(app):
         
         conn = get_db()
         
-        if ip_filter:
+        if username_filter:
+            # Show only this username - single line chart, respecting all other filters
+            where_conditions = [f"u.username = '{username_filter}'"]
+            
+            if ip_filter:
+                where_conditions.append(f"u.IP = '{ip_filter}'")
+            if country_filter:
+                where_conditions.append(f"u.country = '{country_filter}'")
+            if asn_filter:
+                where_conditions.append(f"u.asn_name = '{asn_filter}'")
+            
+            where_clause = " AND ".join(where_conditions)
+            
+            query = f"""
+                WITH date_range AS (
+                    SELECT UNNEST(generate_series(DATE '{start}', DATE '{end}', INTERVAL 1 DAY))::DATE as date
+                )
+                SELECT 
+                    d.date::VARCHAR as date,
+                    '{username_filter}' as username,
+                    COALESCE(MAX(u.country), 'Mixed') as country,
+                    COALESCE(SUM(u.attacks), 0) as attacks
+                FROM date_range d
+                LEFT JOIN daily_ip_username_attacks u
+                    ON d.date = u.date AND {where_clause}
+                GROUP BY d.date
+                ORDER BY d.date
+            """
+        elif ip_filter:
             query = f"""
                 WITH top_usernames AS (
                     SELECT username
@@ -47,23 +75,6 @@ def register_username_attacks(app):
                     ON g.date = d.date AND g.username = d.username AND d.IP = '{ip_filter}'
                 GROUP BY g.date, g.username
                 ORDER BY g.date, attacks DESC
-            """
-        elif username_filter:
-            # Show only this username - single line chart
-            query = f"""
-                WITH date_range AS (
-                    SELECT UNNEST(generate_series(DATE '{start}', DATE '{end}', INTERVAL 1 DAY))::DATE as date
-                )
-                SELECT 
-                    d.date::VARCHAR as date,
-                    '{username_filter}' as username,
-                    'Mixed' as country,
-                    COALESCE(SUM(u.attacks), 0) as attacks
-                FROM date_range d
-                LEFT JOIN daily_ip_username_attacks u
-                    ON d.date = u.date AND u.username = '{username_filter}'
-                GROUP BY d.date
-                ORDER BY d.date
             """
         elif asn_filter and country_filter:
             query = f"""

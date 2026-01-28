@@ -58,7 +58,7 @@ function renderLineChart(containerId, data, options) {
         Math.round(yMax * 0.5),
         Math.round(yMax * 0.75),
         Math.round(yMax)
-    ];
+    ].filter((value, index, self) => self.indexOf(value) === index); // Remove duplicates
     
     g.append('g')
         .attr('class', 'grid')
@@ -207,6 +207,19 @@ function renderLineChart(containerId, data, options) {
         .style('pointer-events', 'none');
 }
 
+// Helper function to round to nice numbers (10, 20, 50, 100, 200, 500, etc.)
+function roundToNice(value) {
+    if (value === 0) return 0;
+    const magnitude = Math.pow(10, Math.floor(Math.log10(value)));
+    const normalized = value / magnitude;
+    let nice;
+    if (normalized <= 1) nice = 1;
+    else if (normalized <= 2) nice = 2;
+    else if (normalized <= 5) nice = 5;
+    else nice = 10;
+    return nice * magnitude;
+}
+
 // Render multi-line chart with TOP LEGEND and interactions
 function renderMultiLineChart(containerId, series, options) {
     const container = d3.select(`#${containerId}`);
@@ -281,8 +294,20 @@ function renderMultiLineChart(containerId, series, options) {
         ])
         .range([0, width]);
     
+    const yMax = d3.max(seriesWithTotals, s => d3.max(s.values, d => d[options.yKey]));
+    
+    // Use nice rounding for y-axis with 10% padding
+    const niceMax = roundToNice(yMax * 1.1);
+    const tickValues = [
+        0,
+        roundToNice(niceMax * 0.25),
+        roundToNice(niceMax * 0.5),
+        roundToNice(niceMax * 0.75),
+        niceMax
+    ].filter((value, index, self) => self.indexOf(value) === index); // Remove duplicates
+    
     const y = d3.scaleLinear()
-        .domain([0, d3.max(seriesWithTotals, s => d3.max(s.values, d => d[options.yKey]))])
+        .domain([0, niceMax])
         .range([height, 0]);
     
     // Extract dates for ticks
@@ -297,15 +322,6 @@ function renderMultiLineChart(containerId, series, options) {
             .tickValues(actualDates)
             .tickSize(-height)
             .tickFormat(''));
-    
-    const yMax = d3.max(seriesWithTotals, s => d3.max(s.values, d => d[options.yKey]));
-    const tickValues = [
-        0,
-        Math.round(yMax * 0.25),
-        Math.round(yMax * 0.5),
-        Math.round(yMax * 0.75),
-        Math.round(yMax)
-    ];
     
     g.append('g')
         .attr('class', 'grid')
@@ -340,15 +356,18 @@ function renderMultiLineChart(containerId, series, options) {
                 return d;
             }));
     
-    yAxis.selectAll('text').style('font-size', '15px');
-    
+    // Style ticks - make top tick bigger/bolder, rest normal size
     const ticks = yAxis.selectAll('.tick');
     const tickCount = ticks.size();
     ticks.each(function(d, i) {
-        if (i === tickCount - 1) {
+        if (i === tickCount - 1) {  // Top tick
             d3.select(this).select('text')
                 .style('font-size', '18px')
                 .style('font-weight', 'bold');
+        } else {  // All other ticks
+            d3.select(this).select('text')
+                .style('font-size', '15px')
+                .style('font-weight', 'normal');
         }
     });
     
@@ -505,7 +524,7 @@ function renderMultiLineChart(containerId, series, options) {
                 }
                 
                 // Rescale chart based on visible series
-                rescaleChart();  // ← ADD THIS LINE
+                rescaleChart();
             });
         
         legendItem.append('rect')
@@ -543,16 +562,17 @@ function renderMultiLineChart(containerId, series, options) {
         
         // Recalculate y-axis domain based on visible series only
         const newYMax = d3.max(visibleSeries, s => d3.max(s.values, d => d[options.yKey]));
-        y.domain([0, newYMax]);
+        const newNiceMax = roundToNice(newYMax * 1.1);
+        y.domain([0, newNiceMax]);
         
         // Update y-axis with new scale
         const newTickValues = [
             0,
-            Math.round(newYMax * 0.25),
-            Math.round(newYMax * 0.5),
-            Math.round(newYMax * 0.75),
-            Math.round(newYMax)
-        ];
+            roundToNice(newNiceMax * 0.25),
+            roundToNice(newNiceMax * 0.5),
+            roundToNice(newNiceMax * 0.75),
+            newNiceMax
+        ].filter((value, index, self) => self.indexOf(value) === index); // Remove duplicates
         
         yAxis.transition().duration(500)
             .call(d3.axisLeft(y)
