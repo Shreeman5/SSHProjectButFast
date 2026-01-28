@@ -1,17 +1,22 @@
 // Chart Rendering Functions
 
+// Helper function to round to nice numbers (10, 20, 50, 100, 200, 500, etc.)
+function roundToNice(value) {
+    if (value === 0) return 0;
+    const magnitude = Math.pow(10, Math.floor(Math.log10(value)));
+    const normalized = value / magnitude;
+    let nice;
+    if (normalized <= 1) nice = 1;
+    else if (normalized <= 2) nice = 2;
+    else if (normalized <= 5) nice = 5;
+    else nice = 10;
+    return nice * magnitude;
+}
+
 // Render single line chart (used for Chart 1: Total Attacks)
 function renderLineChart(containerId, data, options) {
     const container = d3.select(`#${containerId}`);
     container.selectAll('*').remove();
-    
-    // Console log data for debugging
-    // console.log(`${containerId} data:`, {
-    //     rows: data.length,
-    //     firstRow: data[0],
-    //     lastRow: data[data.length - 1],
-    //     sample: data.slice(0, 5)
-    // });
     
     const svg = container.append('svg')
         .attr('width', CHART_WIDTH)
@@ -34,12 +39,25 @@ function renderLineChart(containerId, data, options) {
         .domain(d3.extent(data, d => d.date))
         .range([0, width]);
     
+    // FIXED: Use nice rounding with 10% padding (same as multi-line chart)
+    const yMax = d3.max(data, d => d[options.yKey]);
+    const niceMax = roundToNice(yMax * 1.1);
+    
     const y = d3.scaleLinear()
-        .domain([0, d3.max(data, d => d[options.yKey])])
+        .domain([0, niceMax])
         .range([height, 0]);
     
     // Extract actual dates for exact tick placement
     const actualDates = data.map(d => d.date);
+    
+    // FIXED: Calculate 5 evenly-spaced NICE ROUNDED tick values (same as multi-line chart)
+    const yTickValues = [
+        0,
+        roundToNice(niceMax * 0.25),
+        roundToNice(niceMax * 0.5),
+        roundToNice(niceMax * 0.75),
+        niceMax
+    ].filter((value, index, self) => self.indexOf(value) === index); // Remove duplicates
     
     // Add grid lines - use tickValues to force exact dates
     g.append('g')
@@ -49,16 +67,6 @@ function renderLineChart(containerId, data, options) {
             .tickValues(actualDates)
             .tickSize(-height)
             .tickFormat(''));
-    
-    // Calculate 5 evenly-spaced ROUNDED tick values
-    const yMax = d3.max(data, d => d[options.yKey]);
-    const yTickValues = [
-        0,
-        Math.round(yMax * 0.25),
-        Math.round(yMax * 0.5),
-        Math.round(yMax * 0.75),
-        Math.round(yMax)
-    ].filter((value, index, self) => self.indexOf(value) === index); // Remove duplicates
     
     g.append('g')
         .attr('class', 'grid')
@@ -207,19 +215,6 @@ function renderLineChart(containerId, data, options) {
         .style('pointer-events', 'none');
 }
 
-// Helper function to round to nice numbers (10, 20, 50, 100, 200, 500, etc.)
-function roundToNice(value) {
-    if (value === 0) return 0;
-    const magnitude = Math.pow(10, Math.floor(Math.log10(value)));
-    const normalized = value / magnitude;
-    let nice;
-    if (normalized <= 1) nice = 1;
-    else if (normalized <= 2) nice = 2;
-    else if (normalized <= 5) nice = 5;
-    else nice = 10;
-    return nice * magnitude;
-}
-
 // Render multi-line chart with TOP LEGEND and interactions
 function renderMultiLineChart(containerId, series, options) {
     const container = d3.select(`#${containerId}`);
@@ -241,12 +236,6 @@ function renderMultiLineChart(containerId, series, options) {
     // Sort by total attacks (descending)
     seriesWithTotals.sort((a, b) => b.total - a.total);
     
-    // console.log(`${containerId} data:`, {
-    //     seriesCount: seriesWithTotals.length,
-    //     seriesNames: seriesWithTotals.map(s => s.key),
-    //     topCountry: seriesWithTotals[0]?.key
-    // });
-    
     // Distinct color palette
     const distinctColors = [
         '#1f77b4', // blue
@@ -264,7 +253,7 @@ function renderMultiLineChart(containerId, series, options) {
         .domain(seriesWithTotals.map(s => s.key))
         .range(distinctColors);
     
-    // Always give space for top legend (FIXED: was only for country chart)
+    // Always give space for top legend
     const legendHeight = 70;
     
     const svg = container.append('svg')
@@ -339,7 +328,7 @@ function renderMultiLineChart(containerId, series, options) {
             .tickFormat(d3.timeFormat('%b %d')))
         .selectAll('text')
         .style('text-anchor', 'end')
-        .style('font-size', '12px')
+        .style('font-size', '15px')
         .attr('dx', '-.8em')
         .attr('dy', '.15em')
         .attr('transform', 'rotate(-45)');

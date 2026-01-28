@@ -4,7 +4,7 @@
 const API_BASE = 'http://localhost:5000/api';
 const CHART_WIDTH = 1800;
 const CHART_HEIGHT = 370;
-const MARGIN = {top: 20, right: 40, bottom: 50, left: 50};
+const MARGIN = {top: 20, right: 40, bottom: 50, left: 70};  // Increased left margin from 50 to 70
 
 // Global state
 let state = {

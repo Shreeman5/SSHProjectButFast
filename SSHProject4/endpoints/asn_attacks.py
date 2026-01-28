@@ -1,7 +1,8 @@
 """
-ASN Attacks Endpoint
-Chart 6: Top ASNs with filter support + batch optimization
-NO VOLATILITY - Just shows top attacking ASNs by volume
+ASN Attacks Endpoint - FIXED VERSION
+Chart 6: Top ASNs with proper multi-filter support
+FIXES: Respects ALL active filters together (country + ASN + IP + username)
+BUG FIX: When ASN filter is active, don't include it in where_clause to avoid conflicts
 """
 
 from flask import jsonify, request
@@ -13,7 +14,7 @@ def register_asn_attacks(app):
     
     @app.route('/api/asn_attacks', methods=['GET'])
     def get_asn_attacks():
-        """Chart 6: Top ASNs - with cascading filter support"""
+        """Chart 6: Top ASNs - respects ALL active filters"""
         start, end = parse_date_params()
         
         # Single filters
@@ -30,74 +31,87 @@ def register_asn_attacks(app):
         
         conn = get_db()
         
-        # Build filter conditions
-        where_conditions = []
+        # Determine which table to use
+        use_username_table = username_filter or usernames_filter
+        use_ip_table = ip_filter or ips_filter or use_username_table
         
-        # Username filters
+        if use_username_table:
+            table = "daily_ip_username_attacks"
+            table_alias = "t"
+        elif use_ip_table:
+            table = "daily_ip_attacks"
+            table_alias = "t"
+        else:
+            table = "daily_asn_attacks"
+            table_alias = "t"
+        
+        # Build filter conditions dynamically
+        # NOTE: We build TWO where clauses:
+        # 1. where_clause_with_asn: includes ALL filters (for top 10 query)
+        # 2. where_clause_without_asn: excludes ASN filter (for specific ASN query)
+        
+        where_conditions_with_asn = []
+        where_conditions_without_asn = []
+        
+        # Username filter
         if usernames_filter:
             usernames = usernames_filter.split('|||')
             username_list = ', '.join([f"'{u}'" for u in usernames])
-            where_conditions.append(f"username IN ({username_list})")
+            condition = f"username IN ({username_list})"
+            where_conditions_with_asn.append(condition)
+            where_conditions_without_asn.append(condition)
         elif username_filter:
-            where_conditions.append(f"username = '{username_filter}'")
+            condition = f"username = '{username_filter}'"
+            where_conditions_with_asn.append(condition)
+            where_conditions_without_asn.append(condition)
         
-        # IP filters
+        # IP filter
         if ips_filter:
             ips = ips_filter.split('|||')
             ip_list = ', '.join([f"'{ip}'" for ip in ips])
-            where_conditions.append(f"IP IN ({ip_list})")
+            condition = f"IP IN ({ip_list})"
+            where_conditions_with_asn.append(condition)
+            where_conditions_without_asn.append(condition)
         elif ip_filter:
-            where_conditions.append(f"IP = '{ip_filter}'")
+            condition = f"IP = '{ip_filter}'"
+            where_conditions_with_asn.append(condition)
+            where_conditions_without_asn.append(condition)
         
-        # ASN filters
+        # ASN filter - ONLY add to where_conditions_with_asn
         if asns_filter:
             asns = asns_filter.split('|||')
             asn_list = ', '.join([f"'{a}'" for a in asns])
-            where_conditions.append(f"asn_name IN ({asn_list})")
+            where_conditions_with_asn.append(f"asn_name IN ({asn_list})")
         elif asn_filter:
-            where_conditions.append(f"asn_name = '{asn_filter}'")
+            where_conditions_with_asn.append(f"asn_name = '{asn_filter}'")
         
-        # Country filters
+        # Country filter
         if countries_filter:
             countries = countries_filter.split('|||')
             country_list = ', '.join([f"'{c}'" for c in countries])
-            where_conditions.append(f"country IN ({country_list})")
+            condition = f"country IN ({country_list})"
+            where_conditions_with_asn.append(condition)
+            where_conditions_without_asn.append(condition)
         elif country_filter:
-            where_conditions.append(f"country = '{country_filter}'")
+            condition = f"country = '{country_filter}'"
+            where_conditions_with_asn.append(condition)
+            where_conditions_without_asn.append(condition)
         
-        # Determine which table to use
-        use_username_table = username_filter or usernames_filter
-        table = "daily_ip_username_attacks" if use_username_table else "daily_asn_attacks"
-        table_alias = "u" if use_username_table else "a"
+        where_clause_with_asn = " AND ".join(where_conditions_with_asn) if where_conditions_with_asn else "1=1"
+        where_clause_without_asn = " AND ".join(where_conditions_without_asn) if where_conditions_without_asn else "1=1"
         
-        # If specific ASN filter, show just that/those ASN(s)
-        if asn_filter and not asns_filter:
-            where_clause = " AND ".join([w for w in where_conditions if 'asn_name' not in w]) if len([w for w in where_conditions if 'asn_name' not in w]) > 0 else "1=1"
+        # If specific ASN filter(s), show only those ASN(s)
+        if asn_filter or asns_filter:
+            if asns_filter:
+                asns = asns_filter.split('|||')
+                asn_list = ', '.join([f"'{a}'" for a in asns])
+                asn_values = asns
+            else:
+                asn_list = f"'{asn_filter}'"
+                asn_values = [asn_filter]
             
-            query = f"""
-                WITH date_range AS (
-                    SELECT UNNEST(generate_series(DATE '{start}', DATE '{end}', INTERVAL 1 DAY))::DATE as date
-                )
-                SELECT 
-                    d.date::VARCHAR as date,
-                    '{asn_filter}' as asn_name,
-                    COALESCE(MAX({table_alias}.country), 'Mixed') as country,
-                    COALESCE(SUM({table_alias}.attacks), 0) as attacks
-                FROM date_range d
-                LEFT JOIN {table} {table_alias} 
-                    ON d.date = {table_alias}.date 
-                    AND {table_alias}.asn_name = '{asn_filter}'
-                    {' AND ' + where_clause if where_clause != "1=1" else ''}
-                GROUP BY d.date
-                ORDER BY d.date
-            """
-        
-        # If multiple specific ASNs, show those ASNs
-        elif asns_filter:
-            where_clause = " AND ".join([w for w in where_conditions if 'asn_name IN' not in w]) if len([w for w in where_conditions if 'asn_name IN' not in w]) > 0 else "1=1"
-            asns = asns_filter.split('|||')
-            asn_list = ', '.join([f"'{a}'" for a in asns])
-            
+            # Build query for specific ASN(s) with ALL filters EXCEPT ASN
+            # (ASN is already constrained by the complete_grid)
             query = f"""
                 WITH selected_asns AS (
                     SELECT unnest(ARRAY[{asn_list}]) as asn_name
@@ -117,21 +131,17 @@ def register_asn_attacks(app):
                 LEFT JOIN {table} {table_alias}
                     ON g.date = {table_alias}.date 
                     AND g.asn_name = {table_alias}.asn_name
-                    {' AND ' + where_clause if where_clause != "1=1" else ''}
+                    AND {where_clause_without_asn}
                 GROUP BY g.date, g.asn_name
-                ORDER BY g.date, attacks DESC
+                ORDER BY g.date
             """
-        
-        # Otherwise, show top 10 ASNs for the given filters
         else:
-            where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
-            
+            # Show top 10 ASNs with ALL filters applied
             query = f"""
                 WITH top_asns AS (
                     SELECT asn_name
                     FROM {table}
-                    WHERE date BETWEEN '{start}' AND '{end}'
-                      {' AND ' + where_clause if where_clause != "1=1" else ''}
+                    WHERE date BETWEEN '{start}' AND '{end}' AND {where_clause_with_asn}
                     GROUP BY asn_name
                     ORDER BY SUM(attacks) DESC
                     LIMIT 10
@@ -151,7 +161,7 @@ def register_asn_attacks(app):
                 LEFT JOIN {table} {table_alias}
                     ON g.date = {table_alias}.date 
                     AND g.asn_name = {table_alias}.asn_name
-                    {' AND ' + where_clause if where_clause != "1=1" else ''}
+                    AND {where_clause_with_asn}
                 GROUP BY g.date, g.asn_name
                 ORDER BY g.date, attacks DESC
             """
