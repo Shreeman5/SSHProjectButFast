@@ -32,18 +32,66 @@ function initState() {
 function updateFilterInfo() {
     const filterInfo = document.getElementById('filter-info');
     
-    let html = `<strong>Active Filters:</strong> `;
-    html += `Date: ${state.startDate} to ${state.endDate}`;
+    let html = `<strong>Active Filters:</strong>`;
+    html += `<div class="filter-items">`;
     
-    if (state.country) html += ` | Country: ${state.country}`;
-    if (state.ip) html += ` | IP: ${state.ip}`;
-    if (state.username) html += ` | Username: ${state.username}`;
-    if (state.asn) html += ` | ASN: ${state.asn}`;
+    // Filter order: Date, Country, ASN, IP, Username (matching chart order)
     
-    html += ` <button onclick="resetFilters()" class="reset-btn">Reset All Filters</button>`;
+    // 1. Date (always present)
+    html += `
+        <div class="filter-item">
+            <span class="filter-item-label">Date:</span>
+            <span class="filter-item-value">${state.startDate} to ${state.endDate}</span>
+        </div>
+    `;
+    
+    // 2. Country
+    if (state.country) {
+        html += `
+            <div class="filter-item">
+                <span class="filter-item-label">Country:</span>
+                <span class="filter-item-value">${state.country}</span>
+            </div>
+        `;
+    }
+    
+    // 3. ASN
+    if (state.asn) {
+        html += `
+            <div class="filter-item">
+                <span class="filter-item-label">ASN:</span>
+                <span class="filter-item-value">${state.asn}</span>
+            </div>
+        `;
+    }
+    
+    // 4. IP
+    if (state.ip) {
+        html += `
+            <div class="filter-item">
+                <span class="filter-item-label">IP:</span>
+                <span class="filter-item-value">${state.ip}</span>
+            </div>
+        `;
+    }
+    
+    // 5. Username
+    if (state.username) {
+        html += `
+            <div class="filter-item">
+                <span class="filter-item-label">Username:</span>
+                <span class="filter-item-value">${state.username}</span>
+            </div>
+        `;
+    }
+    
+    html += `</div>`;
+    
+    // Reset button on the right
+    html += `<button onclick="resetFilters()" class="reset-btn">Reset All Filters</button>`;
     
     filterInfo.innerHTML = html;
-    filterInfo.style.display = 'block';
+    filterInfo.style.display = 'flex';
     
     updateGoBackButton();
     updateRestoreCountriesButton();
