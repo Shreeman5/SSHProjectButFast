@@ -18,7 +18,6 @@ def register_index(app):
             'endpoints': {
                 '/api/total_attacks': 'Total attacks over time',
                 '/api/country_attacks': 'Top 10 countries',
-                '/api/unusual_countries': 'Volatile countries',
                 '/api/ip_attacks': 'Top 10 IPs',
                 '/api/username_attacks': 'Top 10 usernames',
                 '/api/asn_attacks': 'Top 10 ASNs',

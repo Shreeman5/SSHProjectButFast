@@ -1,7 +1,5 @@
 async function loadUsernameAttacks() {
-    const showVolatile = state.usernameViewMode === 'volatile';
-    const endpoint = showVolatile ? 'username_attacks_volatile' : 'username_attacks';
-    let url = `${API_BASE}/${endpoint}?start=${state.startDate}&end=${state.endDate}`;
+    let url = `${API_BASE}/username_attacks?start=${state.startDate}&end=${state.endDate}`;
     
     if (state.country) {
         url += `&country=${encodeURIComponent(state.country)}`;
@@ -33,22 +31,4 @@ async function loadUsernameAttacks() {
             loadAllCharts();
         }
     });
-    
-    updateUsernameToggleButton();
-}
-
-function toggleUsernameView() {
-    state.usernameViewMode = state.usernameViewMode === 'volatile' ? 'attacking' : 'volatile';
-    loadUsernameAttacks();
-}
-
-function updateUsernameToggleButton() {
-    const toggleBtn = document.getElementById('username-toggle-btn');
-    if (state.usernameViewMode === 'volatile') {
-        toggleBtn.textContent = 'Show Attacking Usernames';
-        toggleBtn.className = 'toggle-btn toggle-attacking';
-    } else {
-        toggleBtn.textContent = 'Show Volatile Usernames';
-        toggleBtn.className = 'toggle-btn toggle-volatile';
-    }
 }

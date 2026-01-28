@@ -235,43 +235,6 @@ body {
     transform: scale(0.95);
 }
 
-/* Toggle Button (Country Chart) */
-.toggle-btn {
-    padding: 6px 14px;
-    border-radius: 5px;
-    font-size: 12px;
-    font-weight: 500;
-    border: none;
-    cursor: pointer;
-    transition: all 0.2s;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-
-.toggle-volatile {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-}
-
-.toggle-volatile:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
-}
-
-.toggle-attacking {
-    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-    color: white;
-}
-
-.toggle-attacking:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 8px rgba(245, 87, 108, 0.3);
-}
-
-.toggle-btn:active {
-    transform: translateY(0);
-}
-
-
 /* Disabled restore button style */
 .restore-btn-disabled {
     background: #cccccc !important;

@@ -1,10 +1,5 @@
 async function loadCountryAttacks() {
-    // Check if we should show volatile view
-    const showVolatile = state.countryViewMode === 'volatile';
-    
-    // Use the appropriate endpoint
-    const endpoint = showVolatile ? 'unusual_countries' : 'country_attacks';
-    let url = `${API_BASE}/${endpoint}?start=${state.startDate}&end=${state.endDate}`;
+    let url = `${API_BASE}/country_attacks?start=${state.startDate}&end=${state.endDate}`;
     
     if (state.country) {
         url += `&country=${encodeURIComponent(state.country)}`;
@@ -40,26 +35,4 @@ async function loadCountryAttacks() {
             loadAllCharts();
         }
     });
-    
-    // Update the toggle button text
-    updateCountryToggleButton();
-}
-
-function toggleCountryView() {
-    // Toggle between 'attacking' and 'volatile'
-    state.countryViewMode = state.countryViewMode === 'volatile' ? 'attacking' : 'volatile';
-    
-    // Reload the country chart
-    loadCountryAttacks();
-}
-
-function updateCountryToggleButton() {
-    const toggleBtn = document.getElementById('country-toggle-btn');
-    if (state.countryViewMode === 'volatile') {
-        toggleBtn.textContent = 'Show Attacking Countries';
-        toggleBtn.className = 'toggle-btn toggle-attacking';
-    } else {
-        toggleBtn.textContent = 'Show Volatile Countries';
-        toggleBtn.className = 'toggle-btn toggle-volatile';
-    }
 }

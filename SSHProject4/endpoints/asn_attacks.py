@@ -1,6 +1,7 @@
 """
 ASN Attacks Endpoint
-Chart 6: Top ASNs with filter support
+Chart 6: Top ASNs with filter support + batch optimization
+NO VOLATILITY - Just shows top attacking ASNs by volume
 """
 
 from flask import jsonify, request
@@ -12,108 +13,67 @@ def register_asn_attacks(app):
     
     @app.route('/api/asn_attacks', methods=['GET'])
     def get_asn_attacks():
-        """Chart 6: Top ASNs - with username filter support"""
+        """Chart 6: Top ASNs - with cascading filter support"""
         start, end = parse_date_params()
+        
+        # Single filters
         country_filter = request.args.get('country')
         asn_filter = request.args.get('asn')
         ip_filter = request.args.get('ip')
         username_filter = request.args.get('username')
         
+        # Batch filters (plural)
+        countries_filter = request.args.get('countries')
+        asns_filter = request.args.get('asns')
+        ips_filter = request.args.get('ips')
+        usernames_filter = request.args.get('usernames')
+        
         conn = get_db()
         
-        if username_filter:
-            # Username filter takes priority - respect all other filters
-            where_conditions = [f"u.username = '{username_filter}'"]
-            
-            if ip_filter:
-                where_conditions.append(f"u.IP = '{ip_filter}'")
-            if country_filter:
-                where_conditions.append(f"u.country = '{country_filter}'")
-            if asn_filter:
-                where_conditions.append(f"u.asn_name = '{asn_filter}'")
-            
-            where_clause = " AND ".join(where_conditions)
-            
-            # If asn_filter is set, show only that ASN
-            # Otherwise, show top ASNs for this username
-            if asn_filter:
-                query = f"""
-                    WITH date_range AS (
-                        SELECT UNNEST(generate_series(DATE '{start}', DATE '{end}', INTERVAL 1 DAY))::DATE as date
-                    )
-                    SELECT 
-                        d.date::VARCHAR as date,
-                        '{asn_filter}' as asn_name,
-                        COALESCE(MAX(u.country), 'Mixed') as country,
-                        COALESCE(SUM(u.attacks), 0) as attacks
-                    FROM date_range d
-                    LEFT JOIN daily_ip_username_attacks u
-                        ON d.date = u.date AND {where_clause}
-                    GROUP BY d.date
-                    ORDER BY d.date
-                """
-            else:
-                query = f"""
-                    WITH top_asns AS (
-                        SELECT asn_name
-                        FROM daily_ip_username_attacks u
-                        WHERE date BETWEEN '{start}' AND '{end}' AND {where_clause}
-                        GROUP BY asn_name
-                        ORDER BY SUM(u.attacks) DESC
-                        LIMIT 10
-                    ),
-                    date_range AS (
-                        SELECT UNNEST(generate_series(DATE '{start}', DATE '{end}', INTERVAL 1 DAY))::DATE as date
-                    ),
-                    complete_grid AS (
-                        SELECT d.date, t.asn_name FROM date_range d CROSS JOIN top_asns t
-                    )
-                    SELECT 
-                        g.date::VARCHAR as date,
-                        g.asn_name,
-                        'Mixed' as country,
-                        COALESCE(SUM(u.attacks), 0) as attacks
-                    FROM complete_grid g
-                    LEFT JOIN daily_ip_username_attacks u
-                        ON g.date = u.date AND g.asn_name = u.asn_name AND {where_clause}
-                    GROUP BY g.date, g.asn_name
-                    ORDER BY g.date, attacks DESC
-                """
+        # Build filter conditions
+        where_conditions = []
+        
+        # Username filters
+        if usernames_filter:
+            usernames = usernames_filter.split('|||')
+            username_list = ', '.join([f"'{u}'" for u in usernames])
+            where_conditions.append(f"username IN ({username_list})")
+        elif username_filter:
+            where_conditions.append(f"username = '{username_filter}'")
+        
+        # IP filters
+        if ips_filter:
+            ips = ips_filter.split('|||')
+            ip_list = ', '.join([f"'{ip}'" for ip in ips])
+            where_conditions.append(f"IP IN ({ip_list})")
         elif ip_filter:
-            query = f"""
-                WITH date_range AS (
-                    SELECT UNNEST(generate_series(DATE '{start}', DATE '{end}', INTERVAL 1 DAY))::DATE as date
-                ),
-                ip_asn AS (
-                    SELECT DISTINCT asn_name, country FROM daily_ip_attacks WHERE IP = '{ip_filter}' LIMIT 1
-                )
-                SELECT 
-                    d.date::VARCHAR as date,
-                    COALESCE(i.asn_name, (SELECT asn_name FROM ip_asn)) as asn_name,
-                    COALESCE(i.country, (SELECT country FROM ip_asn)) as country,
-                    COALESCE(i.attacks, 0) as attacks
-                FROM date_range d
-                CROSS JOIN ip_asn
-                LEFT JOIN daily_ip_attacks i ON d.date = i.date AND i.IP = '{ip_filter}'
-                ORDER BY d.date
-            """
-        elif asn_filter and country_filter:
-            query = f"""
-                WITH date_range AS (
-                    SELECT UNNEST(generate_series(DATE '{start}', DATE '{end}', INTERVAL 1 DAY))::DATE as date
-                )
-                SELECT 
-                    d.date::VARCHAR as date,
-                    '{asn_filter}' as asn_name,
-                    '{country_filter}' as country,
-                    COALESCE(SUM(a.attacks), 0) as attacks
-                FROM date_range d
-                LEFT JOIN daily_asn_attacks a 
-                    ON d.date = a.date AND a.asn_name = '{asn_filter}' AND a.country = '{country_filter}'
-                GROUP BY d.date
-                ORDER BY d.date
-            """
+            where_conditions.append(f"IP = '{ip_filter}'")
+        
+        # ASN filters
+        if asns_filter:
+            asns = asns_filter.split('|||')
+            asn_list = ', '.join([f"'{a}'" for a in asns])
+            where_conditions.append(f"asn_name IN ({asn_list})")
         elif asn_filter:
+            where_conditions.append(f"asn_name = '{asn_filter}'")
+        
+        # Country filters
+        if countries_filter:
+            countries = countries_filter.split('|||')
+            country_list = ', '.join([f"'{c}'" for c in countries])
+            where_conditions.append(f"country IN ({country_list})")
+        elif country_filter:
+            where_conditions.append(f"country = '{country_filter}'")
+        
+        # Determine which table to use
+        use_username_table = username_filter or usernames_filter
+        table = "daily_ip_username_attacks" if use_username_table else "daily_asn_attacks"
+        table_alias = "u" if use_username_table else "a"
+        
+        # If specific ASN filter, show just that/those ASN(s)
+        if asn_filter and not asns_filter:
+            where_clause = " AND ".join([w for w in where_conditions if 'asn_name' not in w]) if len([w for w in where_conditions if 'asn_name' not in w]) > 0 else "1=1"
+            
             query = f"""
                 WITH date_range AS (
                     SELECT UNNEST(generate_series(DATE '{start}', DATE '{end}', INTERVAL 1 DAY))::DATE as date
@@ -121,46 +81,57 @@ def register_asn_attacks(app):
                 SELECT 
                     d.date::VARCHAR as date,
                     '{asn_filter}' as asn_name,
-                    COALESCE(MAX(a.country), 'Mixed') as country,
-                    COALESCE(SUM(a.attacks), 0) as attacks
+                    COALESCE(MAX({table_alias}.country), 'Mixed') as country,
+                    COALESCE(SUM({table_alias}.attacks), 0) as attacks
                 FROM date_range d
-                LEFT JOIN daily_asn_attacks a ON d.date = a.date AND a.asn_name = '{asn_filter}'
+                LEFT JOIN {table} {table_alias} 
+                    ON d.date = {table_alias}.date 
+                    AND {table_alias}.asn_name = '{asn_filter}'
+                    {' AND ' + where_clause if where_clause != "1=1" else ''}
                 GROUP BY d.date
                 ORDER BY d.date
             """
-        elif country_filter:
+        
+        # If multiple specific ASNs, show those ASNs
+        elif asns_filter:
+            where_clause = " AND ".join([w for w in where_conditions if 'asn_name IN' not in w]) if len([w for w in where_conditions if 'asn_name IN' not in w]) > 0 else "1=1"
+            asns = asns_filter.split('|||')
+            asn_list = ', '.join([f"'{a}'" for a in asns])
+            
             query = f"""
-                WITH top_asns AS (
-                    SELECT asn_name
-                    FROM daily_asn_attacks
-                    WHERE date BETWEEN '{start}' AND '{end}' AND country = '{country_filter}'
-                    GROUP BY asn_name
-                    ORDER BY SUM(attacks) DESC
-                    LIMIT 10
+                WITH selected_asns AS (
+                    SELECT unnest(ARRAY[{asn_list}]) as asn_name
                 ),
                 date_range AS (
                     SELECT UNNEST(generate_series(DATE '{start}', DATE '{end}', INTERVAL 1 DAY))::DATE as date
                 ),
                 complete_grid AS (
-                    SELECT d.date, t.asn_name FROM date_range d CROSS JOIN top_asns t
+                    SELECT d.date, s.asn_name FROM date_range d CROSS JOIN selected_asns s
                 )
                 SELECT 
                     g.date::VARCHAR as date,
                     g.asn_name,
-                    '{country_filter}' as country,
-                    COALESCE(SUM(d.attacks), 0) as attacks
+                    COALESCE(MAX({table_alias}.country), 'Mixed') as country,
+                    COALESCE(SUM({table_alias}.attacks), 0) as attacks
                 FROM complete_grid g
-                LEFT JOIN daily_asn_attacks d 
-                    ON g.date = d.date AND g.asn_name = d.asn_name AND d.country = '{country_filter}'
+                LEFT JOIN {table} {table_alias}
+                    ON g.date = {table_alias}.date 
+                    AND g.asn_name = {table_alias}.asn_name
+                    {' AND ' + where_clause if where_clause != "1=1" else ''}
                 GROUP BY g.date, g.asn_name
                 ORDER BY g.date, attacks DESC
             """
+        
+        # Otherwise, show top 10 ASNs for the given filters
         else:
+            where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
+            
             query = f"""
                 WITH top_asns AS (
                     SELECT asn_name
-                    FROM daily_asn_attacks
+                    FROM {table}
                     WHERE date BETWEEN '{start}' AND '{end}'
+                      {' AND ' + where_clause if where_clause != "1=1" else ''}
                     GROUP BY asn_name
                     ORDER BY SUM(attacks) DESC
                     LIMIT 10
@@ -174,10 +145,13 @@ def register_asn_attacks(app):
                 SELECT 
                     g.date::VARCHAR as date,
                     g.asn_name,
-                    'Mixed' as country,
-                    COALESCE(SUM(d.attacks), 0) as attacks
+                    COALESCE(MAX({table_alias}.country), 'Mixed') as country,
+                    COALESCE(SUM({table_alias}.attacks), 0) as attacks
                 FROM complete_grid g
-                LEFT JOIN daily_asn_attacks d ON g.date = d.date AND g.asn_name = d.asn_name
+                LEFT JOIN {table} {table_alias}
+                    ON g.date = {table_alias}.date 
+                    AND g.asn_name = {table_alias}.asn_name
+                    {' AND ' + where_clause if where_clause != "1=1" else ''}
                 GROUP BY g.date, g.asn_name
                 ORDER BY g.date, attacks DESC
             """

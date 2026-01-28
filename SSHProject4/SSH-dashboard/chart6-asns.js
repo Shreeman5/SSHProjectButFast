@@ -1,7 +1,5 @@
 async function loadASNAttacks() {
-    const showVolatile = state.asnViewMode === 'volatile';
-    const endpoint = showVolatile ? 'asn_attacks_volatile' : 'asn_attacks';
-    let url = `${API_BASE}/${endpoint}?start=${state.startDate}&end=${state.endDate}`;
+    let url = `${API_BASE}/asn_attacks?start=${state.startDate}&end=${state.endDate}`;
     
     if (state.country) {
         url += `&country=${encodeURIComponent(state.country)}`;
@@ -33,22 +31,4 @@ async function loadASNAttacks() {
             loadAllCharts();
         }
     });
-    
-    updateASNToggleButton();
-}
-
-function toggleASNView() {
-    state.asnViewMode = state.asnViewMode === 'volatile' ? 'attacking' : 'volatile';
-    loadASNAttacks();
-}
-
-function updateASNToggleButton() {
-    const toggleBtn = document.getElementById('asn-toggle-btn');
-    if (state.asnViewMode === 'volatile') {
-        toggleBtn.textContent = 'Show Attacking ASNs';
-        toggleBtn.className = 'toggle-btn toggle-attacking';
-    } else {
-        toggleBtn.textContent = 'Show Volatile ASNs';
-        toggleBtn.className = 'toggle-btn toggle-volatile';
-    }
 }
