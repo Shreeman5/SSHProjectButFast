@@ -129,14 +129,12 @@ function switchDimension(dimension) {
 
 // Apply filters and sorting
 function applyFilters() {
-    const minAttacks = parseInt(document.getElementById('min-attacks').value) || 0;
     const searchTerm = document.getElementById('search-box').value.toLowerCase();
     
     // Filter data
     filteredData = allData.filter(item => {
-        const matchesMin = item.total_attacks >= minAttacks;
         const matchesSearch = !searchTerm || getEntityName(item).toLowerCase().includes(searchTerm);
-        return matchesMin && matchesSearch;
+        return matchesSearch;
     });
     
     // Sort by current column(s) and direction
@@ -198,8 +196,8 @@ function calculateRanks(data, column) {
     } else if (column === 'last_seen') {
         // More recent last_seen = better (lower rank) - currently active threats
         sortAscending = false;
-    } else if (column === 'country') {
-        // For country names, alphabetical A-Z = better (subjective, but consistent)
+    } else if (column === 'country' || column === 'ip' || column === 'asn_name' || column === 'username') {
+        // For entity names, alphabetical A-Z = better (subjective, but consistent)
         sortAscending = true;
     }
     // All other numeric columns: higher value = better (lower rank)
@@ -216,7 +214,7 @@ function calculateRanks(data, column) {
         }
         
         // Handle string comparison
-        if (column === 'country') {
+        if (column === 'country' || column === 'ip' || column === 'asn_name' || column === 'username') {
             aVal = aVal.toString().toLowerCase();
             bVal = bVal.toString().toLowerCase();
         }
@@ -231,8 +229,16 @@ function calculateRanks(data, column) {
     // Assign ranks with tie handling
     const ranks = new Map();
     let currentRank = 1;
-    let previousValue = null;
     let previousValueStr = null;
+    
+    // Get entity identifier based on dimension
+    const getEntityId = (item) => {
+        if (currentDimension === 'country') return item.country;
+        if (currentDimension === 'ip') return item.ip;
+        if (currentDimension === 'asn') return item.asn_name;
+        if (currentDimension === 'username') return item.username;
+        return item.country; // fallback
+    };
     
     sorted.forEach((item, index) => {
         let value = item[column];
@@ -253,7 +259,7 @@ function calculateRanks(data, column) {
             currentRank = index + 1;
         }
         
-        ranks.set(item.country, currentRank);
+        ranks.set(getEntityId(item), currentRank);
         previousValueStr = valueStr;
     });
     
@@ -280,8 +286,8 @@ function sortData() {
                 bVal = new Date(bVal);
             }
             
-            // Handle string comparison (for country name)
-            if (sortColumns[0] === 'country') {
+            // Handle string comparison (for entity names)
+            if (sortColumns[0] === 'country' || sortColumns[0] === 'ip' || sortColumns[0] === 'asn_name' || sortColumns[0] === 'username') {
                 aVal = aVal.toLowerCase();
                 bVal = bVal.toLowerCase();
             }
@@ -301,12 +307,22 @@ function sortData() {
         // Get column labels for debug
         const columnLabels = sortColumns.map(col => getColumnLabel(col));
         
-        // Step 2: Calculate average rank for each country
+        // Step 2: Calculate average rank for each entity
         const avgRanks = filteredData.map(item => {
-            const ranks = rankMaps.map(rankMap => rankMap.get(item.country));
+            const entityId = getEntityId(item);
+            const ranks = rankMaps.map(rankMap => rankMap.get(entityId));
             const avgRank = ranks.reduce((sum, rank) => sum + rank, 0) / ranks.length;
             return { item, avgRank, ranks };  // Store individual ranks for debug
         });
+        
+        // Helper function to get entity ID
+        function getEntityId(item) {
+            if (currentDimension === 'country') return item.country;
+            if (currentDimension === 'ip') return item.ip;
+            if (currentDimension === 'asn') return item.asn_name;
+            if (currentDimension === 'username') return item.username;
+            return item.country; // fallback
+        }
         
         // Step 3: Sort by average rank
         avgRanks.sort((a, b) => {
@@ -370,48 +386,30 @@ function renderTable() {
     const tbody = document.getElementById('table-body');
     
     if (pageData.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="15" style="text-align: center; padding: 40px;">No data found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="12" style="text-align: center; padding: 40px;">No data found</td></tr>';
         return;
     }
     
     tbody.innerHTML = pageData.map((item, idx) => {
         const rank = startIdx + idx + 1;
+        const entityName = getEntityName(item);
         
-        if (currentDimension === 'country') {
-            return `
-                <tr>
-                    <td>${rank}</td>
-                    <td><strong>${item.country}</strong></td>
-                    <td class="number">${formatNumber(item.total_attacks)}</td>
-                    <td class="number">${formatNumber(item.avg_daily)}</td>
-                    <td class="number">${item.persistence_pct}% (${item.active_days}d)</td>
-                    <td class="number">${formatNumber(item.max_absolute_change)}</td>
-                    <td class="number">${formatNumber(item.max_pct_change)}%</td>
-                    <td class="number">${formatNumber(item.recent_attacks)}</td>
-                    <td>${item.first_seen}</td>
-                    <td>${item.last_seen}</td>
-                    <td class="number">${formatNumber(item.max_daily)}</td>
-                </tr>
-            `;
-        } else {
-            // Default rendering for other dimensions
-            return `
-                <tr>
-                    <td>${rank}</td>
-                    <td><strong>${getEntityName(item)}</strong></td>
-                    ${currentDimension === 'ip' ? `<td>${item.country || 'Unknown'}</td>` : ''}
-                    ${currentDimension === 'ip' ? `<td>${truncate(item.asn_name, 30)}</td>` : ''}
-                    ${['asn', 'username'].includes(currentDimension) ? `<td>${item.countries || '-'}</td>` : ''}
-                    <td class="number">${formatNumber(item.total_attacks)}</td>
-                    <td class="number">${formatNumber(item.avg_daily)}</td>
-                    <td>${item.active_days}</td>
-                    <td>${item.first_seen}</td>
-                    <td>${item.last_seen}</td>
-                    <td class="number">${(item.volatility || 0)}%</td>
-                    <td class="number">${(item.persistence_pct || 0)}%</td>
-                </tr>
-            `;
-        }
+        // Use same columns for all dimensions
+        return `
+            <tr>
+                <td>${rank}</td>
+                <td><strong>${entityName}</strong></td>
+                <td class="number">${formatNumber(item.total_attacks)}</td>
+                <td class="number">${formatNumber(item.avg_daily)}</td>
+                <td class="number">${item.persistence_pct || 0}% ${item.active_days ? `(${item.active_days}d)` : ''}</td>
+                <td class="number">${formatNumber(item.max_absolute_change || 0)}</td>
+                <td class="number">${formatNumber(item.max_pct_change || 0)}%</td>
+                <td class="number">${formatNumber(item.recent_attacks || 0)}</td>
+                <td>${item.first_seen || '-'}</td>
+                <td>${item.last_seen || '-'}</td>
+                <td class="number">${formatNumber(item.max_daily || 0)}</td>
+            </tr>
+        `;
     }).join('');
     
     // Update pagination
@@ -424,22 +422,22 @@ function renderHeader() {
     
     if (currentDimension === 'country') {
         const columns = [
-            { label: 'Rank', key: null },
-            { label: 'Country', key: 'country' },
-            { label: 'Total Attacks', key: 'total_attacks' },
-            { label: 'Avg Daily', key: 'avg_daily' },
-            { label: 'Persistence', key: 'persistence_pct' },
-            { label: 'Max Absolute Δ', key: 'max_absolute_change' },
-            { label: 'Max % Δ', key: 'max_pct_change' },
-            { label: 'Recent (7d)', key: 'recent_attacks' },
-            { label: 'First Seen', key: 'first_seen' },
-            { label: 'Last Seen', key: 'last_seen' },
-            { label: 'Max Daily', key: 'max_daily' }
+            { label: 'Rank', key: null, tooltip: 'Position in the current sorted list' },
+            { label: 'Country', key: 'country', tooltip: 'Country where the attacks originated' },
+            { label: 'Total Attacks', key: 'total_attacks', tooltip: 'Total number of attacks across all 69 days' },
+            { label: 'Avg Daily', key: 'avg_daily', tooltip: 'Average attacks per day (only counting days with activity)' },
+            { label: 'Persistence', key: 'persistence_pct', tooltip: 'Percentage of days this country appeared in logs (e.g., 95% = 65 out of 69 days)' },
+            { label: 'Max Absolute Δ', key: 'max_absolute_change', tooltip: 'Largest day-to-day increase in attacks (e.g., went from 100 to 5,000 = Δ4,900)' },
+            { label: 'Max % Δ', key: 'max_pct_change', tooltip: 'Largest day-to-day percentage increase (e.g., went from 100 to 500 = 400%)' },
+            { label: 'Recent (7d)', key: 'recent_attacks', tooltip: 'Total attacks in the last 7 days of the dataset' },
+            { label: 'First Seen', key: 'first_seen', tooltip: 'First date this country appeared in the logs (earlier = more established threat)' },
+            { label: 'Last Seen', key: 'last_seen', tooltip: 'Last date this country appeared in the logs (more recent = currently active threat)' },
+            { label: 'Max Daily', key: 'max_daily', tooltip: 'Highest single-day attack count' }
         ];
         
         header.innerHTML = columns.map(col => {
             if (!col.key) {
-                return `<th>${col.label}</th>`;
+                return `<th title="${col.tooltip}">${col.label}</th>`;
             }
             
             const isInSortList = sortColumns.includes(col.key);
@@ -451,34 +449,52 @@ function renderHeader() {
                 '';
             const sortClass = isInSortList ? 'sorted' : '';
             
-            return `<th class="${sortClass}" onclick="sortByColumn('${col.key}', event)" style="cursor: pointer; user-select: none;">${col.label}${indicator}</th>`;
+            return `<th class="${sortClass}" onclick="sortByColumn('${col.key}', event)" style="cursor: pointer; user-select: none;" title="${col.tooltip}">${col.label}${indicator}</th>`;
         }).join('');
     } else {
-        let columns = [
-            'Rank',
-            getDimensionLabel()
+        // Use same column structure for all dimensions
+        const columns = [
+            { label: 'Rank', key: null, tooltip: 'Position in the current sorted list' },
+            { label: getDimensionLabel(), key: getDimensionKey(), tooltip: `The ${currentDimension} identifier` },
+            { label: 'Total Attacks', key: 'total_attacks', tooltip: 'Total number of attacks across all 69 days' },
+            { label: 'Avg Daily', key: 'avg_daily', tooltip: 'Average attacks per day (only counting days with activity)' },
+            { label: 'Persistence', key: 'persistence_pct', tooltip: 'Percentage of days this entity appeared in logs' },
+            { label: 'Max Absolute Δ', key: 'max_absolute_change', tooltip: 'Largest day-to-day increase in attacks' },
+            { label: 'Max % Δ', key: 'max_pct_change', tooltip: 'Largest day-to-day percentage increase' },
+            { label: 'Recent (7d)', key: 'recent_attacks', tooltip: 'Total attacks in the last 7 days of the dataset' },
+            { label: 'First Seen', key: 'first_seen', tooltip: 'First date this entity appeared in the logs' },
+            { label: 'Last Seen', key: 'last_seen', tooltip: 'Last date this entity appeared in the logs' },
+            { label: 'Max Daily', key: 'max_daily', tooltip: 'Highest single-day attack count' }
         ];
         
-        if (currentDimension === 'ip') {
-            columns.push('Country', 'ASN');
-        }
-        
-        if (currentDimension === 'asn' || currentDimension === 'username') {
-            columns.push('Countries');
-        }
-        
-        columns.push(
-            'Total Attacks',
-            'Avg Daily',
-            'Active Days',
-            'First Seen',
-            'Last Seen',
-            'Volatility',
-            'Persistence'
-        );
-        
-        header.innerHTML = columns.map(col => `<th>${col}</th>`).join('');
+        header.innerHTML = columns.map(col => {
+            if (!col.key) {
+                return `<th title="${col.tooltip}">${col.label}</th>`;
+            }
+            
+            const isInSortList = sortColumns.includes(col.key);
+            const sortIndex = sortColumns.indexOf(col.key);
+            const indicator = isInSortList ? 
+                (sortColumns.length === 1 ? 
+                    (sortDirection === 'desc' ? ' ▼' : ' ▲') : 
+                    ` [${sortIndex + 1}]`) : 
+                '';
+            const sortClass = isInSortList ? 'sorted' : '';
+            
+            return `<th class="${sortClass}" onclick="sortByColumn('${col.key}', event)" style="cursor: pointer; user-select: none;" title="${col.tooltip}">${col.label}${indicator}</th>`;
+        }).join('');
     }
+}
+
+// Get dimension key for entity name column
+function getDimensionKey() {
+    const keys = {
+        'country': 'country',
+        'ip': 'ip',
+        'asn': 'asn_name',
+        'username': 'username'
+    };
+    return keys[currentDimension];
 }
 
 // Get dimension label
@@ -495,32 +511,7 @@ function getDimensionLabel() {
 // Update quick stats
 function updateQuickStats() {
     const totalEntities = allData.length;
-    
-    // Calculate top 10 percentage
-    const top10Total = allData.slice(0, 10).reduce((sum, item) => sum + item.total_attacks, 0);
-    const grandTotal = allData.reduce((sum, item) => sum + item.total_attacks, 0);
-    const top10Pct = grandTotal > 0 ? ((top10Total / grandTotal) * 100).toFixed(1) : 0;
-    
-    // Count active in last 7 days
-    let activeRecent = 0;
-    if (currentDimension === 'country' && allData[0]?.recent_attacks !== undefined) {
-        activeRecent = allData.filter(item => item.recent_attacks > 0).length;
-    } else {
-        const sevenDaysAgo = new Date();
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-        activeRecent = allData.filter(item => new Date(item.last_seen) >= sevenDaysAgo).length;
-    }
-    
-    // Count new in last 7 days
-    const newThreats = allData.filter(item => {
-        const daysSince = Math.floor((new Date() - new Date(item.first_seen)) / (1000 * 60 * 60 * 24));
-        return daysSince <= 7;
-    }).length;
-    
     document.getElementById('total-entities').textContent = formatNumber(totalEntities);
-    document.getElementById('top10-pct').textContent = top10Pct + '%';
-    document.getElementById('active-recent').textContent = formatNumber(activeRecent);
-    document.getElementById('new-threats').textContent = formatNumber(newThreats);
 }
 
 // Pagination functions
@@ -557,7 +548,6 @@ function changePageSize() {
 
 // Reset filters
 function resetFilters() {
-    document.getElementById('min-attacks').value = 0;
     document.getElementById('search-box').value = '';
     applyFilters();
 }
