@@ -14,6 +14,8 @@ def register_country_summary(app):
     def get_country_summary():
         """Get comprehensive summary data for all countries"""
         start, end = parse_date_params()
+        limit = request.args.get('limit', type=int, default=None)
+        offset = request.args.get('offset', type=int, default=0)
         
         conn = get_db()
         
@@ -113,6 +115,8 @@ def register_country_summary(app):
             LEFT JOIN volatility_metrics vm ON cs.country = vm.country
             LEFT JOIN last_7_days l7 ON cs.country = l7.country
             ORDER BY cs.total_attacks DESC
+            {f'LIMIT {limit}' if limit else ''}
+            {f'OFFSET {offset}' if offset > 0 else ''}
         """
         
         result = conn.execute(query).fetchall()

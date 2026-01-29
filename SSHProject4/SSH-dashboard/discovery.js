@@ -9,6 +9,11 @@ let filteredData = [];
 let currentPage = 1;
 let pageSize = 50;
 
+// Progressive loading state
+let isLoadingMore = false;
+let hasMoreData = true;
+let batchSize = 50000;  // Load 50000 at a time
+
 // Multi-column sorting state
 let sortColumns = ['total_attacks'];  // Array of columns to sort by
 let sortDirection = 'desc';  // Single direction for now (all columns same direction)
@@ -40,6 +45,9 @@ function updateDebugView() {
     
     const { rankMaps, avgRanks, columnLabels } = debugRankings;
     
+    // Get dimension-specific entity label
+    const entityLabel = getDimensionLabel();
+    
     // Create header
     let html = '<div style="margin-bottom: 15px; padding: 10px; background: #f8f9fa; border-radius: 4px;">';
     html += `<strong>Sorting by ${sortColumns.length} columns:</strong> ${columnLabels.join(', ')}<br>`;
@@ -51,7 +59,7 @@ function updateDebugView() {
     html += '<thead style="background: #e9ecef; position: sticky; top: 0;">';
     html += '<tr>';
     html += '<th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Final Rank</th>';
-    html += '<th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Country</th>';
+    html += `<th style="padding: 8px; border: 1px solid #ddd; text-align: left;">${entityLabel}</th>`;
     
     columnLabels.forEach(label => {
         html += `<th style="padding: 8px; border: 1px solid #ddd; text-align: center;">${label}<br>Rank</th>`;
@@ -62,16 +70,17 @@ function updateDebugView() {
     html += '</thead>';
     html += '<tbody>';
     
-    // Show top 50 countries
-    const topCountries = avgRanks.slice(0, 50);
+    // Show top 50 entities
+    const topEntities = avgRanks.slice(0, 50);
     
-    topCountries.forEach((entry, idx) => {
+    topEntities.forEach((entry, idx) => {
         const { item, avgRank, ranks } = entry;
         const finalRank = idx + 1;
+        const entityName = getEntityName(item);
         
         html += '<tr>';
         html += `<td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">#${finalRank}</td>`;
-        html += `<td style="padding: 8px; border: 1px solid #ddd;"><strong>${item.country}</strong></td>`;
+        html += `<td style="padding: 8px; border: 1px solid #ddd;"><strong>${entityName}</strong></td>`;
         
         ranks.forEach(rank => {
             html += `<td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${rank}</td>`;
@@ -85,7 +94,7 @@ function updateDebugView() {
     html += '</table>';
     
     if (avgRanks.length > 50) {
-        html += `<p style="margin-top: 10px; color: #666; font-style: italic;">Showing top 50 of ${avgRanks.length} countries</p>`;
+        html += `<p style="margin-top: 10px; color: #666; font-style: italic;">Showing top 50 of ${avgRanks.length} ${entityLabel.toLowerCase()}s</p>`;
     }
     
     debugContent.innerHTML = html;
@@ -96,22 +105,170 @@ document.addEventListener('DOMContentLoaded', () => {
     loadData();
 });
 
-// Load data for current dimension
+// Load data for current dimension with progressive loading
 async function loadData() {
     try {
-        const response = await fetch(`${API_BASE}/api/${currentDimension}_summary?start=2022-11-01&end=2023-01-08`);
-        allData = await response.json();
+        // Reset state
+        allData = [];
+        hasMoreData = true;
         
-        // Default sort by total_attacks descending
-        sortColumns = ['total_attacks'];
-        sortDirection = 'desc';
+        // Fetch total count for debugging
+        await fetchTotalCount();
         
-        applyFilters();
+        // Initial load - get first batch
+        await loadMoreData();
+        
         updateQuickStats();
     } catch (error) {
         console.error('Error loading data:', error);
         document.getElementById('table-body').innerHTML = 
-            '<tr><td colspan="15" style="text-align: center; padding: 40px; color: red;">Error loading data</td></tr>';
+            '<tr><td colspan="15" style="text-align: center; padding: 40px; color: red;">Error loading data. The dataset may be too large.</td></tr>';
+    }
+}
+
+// Fetch total count for current dimension
+async function fetchTotalCount() {
+    try {
+        const response = await fetch(`${API_BASE}/api/${currentDimension}_count?start=2022-11-01&end=2023-01-08`);
+        const data = await response.json();
+        
+        let total = 0;
+        let label = '';
+        
+        if (currentDimension === 'country') {
+            total = data.total_countries;
+            label = 'countries';
+        } else if (currentDimension === 'ip') {
+            total = data.total_ips;
+            label = 'IPs';
+        } else if (currentDimension === 'asn') {
+            total = data.total_asns;
+            label = 'ASNs';
+        } else if (currentDimension === 'username') {
+            total = data.total_usernames;
+            label = 'usernames';
+        }
+        
+        console.log(`%c[${currentDimension.toUpperCase()}] Total unique ${label}: ${total.toLocaleString()}`, 'color: #667eea; font-weight: bold; font-size: 14px;');
+        
+    } catch (error) {
+        console.error('Error fetching total count:', error);
+    }
+}
+
+// Load next batch of data
+async function loadMoreData() {
+    if (isLoadingMore || !hasMoreData) return;
+    
+    isLoadingMore = true;
+    updateLoadingIndicator(true);
+    
+    try {
+        const offset = allData.length;
+        const url = `${API_BASE}/api/${currentDimension}_summary?start=2022-11-01&end=2023-01-08&limit=${batchSize}&offset=${offset}`;
+        
+        console.log(`Fetching: ${url}`);
+        
+        const response = await fetch(url);
+        
+        // Check if response is ok
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        // Check content type
+        const contentType = response.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+            const text = await response.text();
+            console.error('Received non-JSON response:', text.substring(0, 500));
+            throw new Error(`Expected JSON, got ${contentType}`);
+        }
+        
+        const newData = await response.json();
+        
+        // Validate data is an array
+        if (!Array.isArray(newData)) {
+            console.error('Received invalid data:', newData);
+            throw new Error('Expected array of data');
+        }
+        
+        if (newData.length === 0) {
+            console.log('No more data to load');
+            hasMoreData = false;
+            updateLoadingIndicator(false);
+            
+            // If this was the first load and we got no data, show message
+            if (offset === 0) {
+                document.getElementById('table-body').innerHTML = 
+                    '<tr><td colspan="15" style="text-align: center; padding: 40px;">No data found for this dimension.</td></tr>';
+            }
+            return;
+        }
+        
+        // Append new data
+        allData = allData.concat(newData);
+        
+        // Check if we got less than batch size (means we're done)
+        if (newData.length < batchSize) {
+            hasMoreData = false;
+        }
+        
+        console.log(`✓ Loaded ${newData.length} ${currentDimension}s (total: ${allData.length})`);
+        
+        // Default sort by total_attacks descending on first load
+        if (offset === 0) {
+            sortColumns = ['total_attacks'];
+            sortDirection = 'desc';
+        }
+        
+        applyFilters();
+        updateLoadMoreButton();
+        
+    } catch (error) {
+        console.error('❌ Error loading batch:', error);
+        hasMoreData = false;
+        
+        // Show error message in table
+        if (allData.length === 0) {
+            document.getElementById('table-body').innerHTML = 
+                `<tr><td colspan="15" style="text-align: center; padding: 40px; color: red;">
+                    <strong>Error loading data</strong><br>
+                    ${error.message}<br>
+                    <small>Check browser console for details</small>
+                </td></tr>`;
+        }
+    } finally {
+        isLoadingMore = false;
+        updateLoadingIndicator(false);
+    }
+}
+
+// Update loading indicator
+function updateLoadingIndicator(show) {
+    const indicator = document.getElementById('loading-indicator');
+    if (indicator) {
+        indicator.style.display = show ? 'block' : 'none';
+    }
+}
+
+// Update "Load More" button
+function updateLoadMoreButton() {
+    const btnContainer = document.getElementById('load-more-container');
+    if (!btnContainer) return;
+    
+    if (hasMoreData) {
+        btnContainer.innerHTML = `
+            <button onclick="loadMoreData()" style="padding: 12px 24px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: 600;">
+                📥 Load More (${allData.length.toLocaleString()} loaded)
+            </button>
+        `;
+        btnContainer.style.display = 'block';
+    } else {
+        btnContainer.innerHTML = `
+            <div style="padding: 12px; color: #666; font-style: italic;">
+                ✓ All ${allData.length.toLocaleString()} ${currentDimension}s loaded
+            </div>
+        `;
     }
 }
 
@@ -119,6 +276,16 @@ async function loadData() {
 function switchDimension(dimension) {
     currentDimension = dimension;
     currentPage = 1;
+    
+    // Hide ranking calculator when switching tabs
+    const debugSection = document.getElementById('debug-section');
+    if (debugSection && debugSection.style.display !== 'none') {
+        debugSection.style.display = 'none';
+        document.getElementById('show-debug-btn').style.display = 'block';
+    }
+    
+    // Clear debug rankings
+    debugRankings = null;
     
     // Update active button
     document.querySelectorAll('.dim-btn').forEach(btn => btn.classList.remove('active'));
@@ -163,6 +330,15 @@ function sortByColumn(column, event) {
             if (sortColumns.length === 0) {
                 sortColumns = ['total_attacks'];
             }
+            
+            // If we're back to 1 column, hide debug and clear rankings
+            if (sortColumns.length === 1) {
+                debugRankings = null;
+                const debugSection = document.getElementById('debug-section');
+                if (debugSection && debugSection.style.display !== 'none') {
+                    toggleDebug();
+                }
+            }
         } else {
             // Add column to sort list
             sortColumns.push(column);
@@ -176,6 +352,13 @@ function sortByColumn(column, event) {
             // New column(s), reset to descending
             sortColumns = [column];
             sortDirection = 'desc';
+        }
+        
+        // Clear debug rankings and hide section
+        debugRankings = null;
+        const debugSection = document.getElementById('debug-section');
+        if (debugSection && debugSection.style.display !== 'none') {
+            toggleDebug();
         }
     }
     
@@ -394,19 +577,19 @@ function renderTable() {
         const rank = startIdx + idx + 1;
         const entityName = getEntityName(item);
         
-        // Use same columns for all dimensions
+        // Use same columns for all dimensions with proper formatting
         return `
             <tr>
                 <td>${rank}</td>
                 <td><strong>${entityName}</strong></td>
                 <td class="number">${formatNumber(item.total_attacks)}</td>
                 <td class="number">${formatNumber(item.avg_daily)}</td>
-                <td class="number">${item.persistence_pct || 0}% ${item.active_days ? `(${item.active_days}d)` : ''}</td>
+                <td class="number">${formatPercentage(item.persistence_pct || 0)} ${item.active_days ? `(${item.active_days}d)` : ''}</td>
                 <td class="number">${formatNumber(item.max_absolute_change || 0)}</td>
-                <td class="number">${formatNumber(item.max_pct_change || 0)}%</td>
+                <td class="number">${formatPercentage(item.max_pct_change || 0)}</td>
                 <td class="number">${formatNumber(item.recent_attacks || 0)}</td>
-                <td>${item.first_seen || '-'}</td>
-                <td>${item.last_seen || '-'}</td>
+                <td>${formatDate(item.first_seen)}</td>
+                <td>${formatDate(item.last_seen)}</td>
                 <td class="number">${formatNumber(item.max_daily || 0)}</td>
             </tr>
         `;
@@ -422,21 +605,21 @@ function renderHeader() {
     
     if (currentDimension === 'country') {
         const columns = [
-            { label: 'Rank', key: null, tooltip: 'Position in the current sorted list' },
-            { label: 'Country', key: 'country', tooltip: 'Country where the attacks originated' },
-            { label: 'Total Attacks', key: 'total_attacks', tooltip: 'Total number of attacks across all 69 days' },
-            { label: 'Avg Daily', key: 'avg_daily', tooltip: 'Average attacks per day (only counting days with activity)' },
-            { label: 'Persistence', key: 'persistence_pct', tooltip: 'Percentage of days this country appeared in logs (e.g., 95% = 65 out of 69 days)' },
-            { label: 'Max Absolute Δ', key: 'max_absolute_change', tooltip: 'Largest day-to-day increase in attacks (e.g., went from 100 to 5,000 = Δ4,900)' },
-            { label: 'Max % Δ', key: 'max_pct_change', tooltip: 'Largest day-to-day percentage increase (e.g., went from 100 to 500 = 400%)' },
-            { label: 'Recent (7d)', key: 'recent_attacks', tooltip: 'Total attacks in the last 7 days of the dataset' },
-            { label: 'First Seen', key: 'first_seen', tooltip: 'First date this country appeared in the logs (earlier = more established threat)' },
-            { label: 'Last Seen', key: 'last_seen', tooltip: 'Last date this country appeared in the logs (more recent = currently active threat)' },
-            { label: 'Max Daily', key: 'max_daily', tooltip: 'Highest single-day attack count' }
+            { label: 'Rank', key: null, tooltip: 'Position in the current sorted list', sortable: false },
+            { label: 'Country', key: 'country', tooltip: 'Country where the attacks originated', sortable: false },
+            { label: 'Total Attacks', key: 'total_attacks', tooltip: 'Total number of attacks across all 69 days', sortable: true },
+            { label: 'Avg Daily', key: 'avg_daily', tooltip: 'Average attacks per day (only counting days with activity)', sortable: true },
+            { label: 'Persistence', key: 'persistence_pct', tooltip: 'Percentage of days this country appeared in logs (e.g., 95% = 65 out of 69 days)', sortable: true },
+            { label: 'Max Absolute Δ', key: 'max_absolute_change', tooltip: 'Largest day-to-day increase in attacks (e.g., went from 100 to 5,000 = Δ4,900)', sortable: true },
+            { label: 'Max % Δ', key: 'max_pct_change', tooltip: 'Largest day-to-day percentage increase (e.g., went from 100 to 500 = 400%)', sortable: true },
+            { label: 'Recent (7d)', key: 'recent_attacks', tooltip: 'Total attacks in the last 7 days of the dataset', sortable: true },
+            { label: 'First Seen', key: 'first_seen', tooltip: 'First date this country appeared in the logs (earlier = more established threat)', sortable: true },
+            { label: 'Last Seen', key: 'last_seen', tooltip: 'Last date this country appeared in the logs (more recent = currently active threat)', sortable: true },
+            { label: 'Max Daily', key: 'max_daily', tooltip: 'Highest single-day attack count', sortable: true }
         ];
         
         header.innerHTML = columns.map(col => {
-            if (!col.key) {
+            if (!col.sortable) {
                 return `<th title="${col.tooltip}">${col.label}</th>`;
             }
             
@@ -454,21 +637,21 @@ function renderHeader() {
     } else {
         // Use same column structure for all dimensions
         const columns = [
-            { label: 'Rank', key: null, tooltip: 'Position in the current sorted list' },
-            { label: getDimensionLabel(), key: getDimensionKey(), tooltip: `The ${currentDimension} identifier` },
-            { label: 'Total Attacks', key: 'total_attacks', tooltip: 'Total number of attacks across all 69 days' },
-            { label: 'Avg Daily', key: 'avg_daily', tooltip: 'Average attacks per day (only counting days with activity)' },
-            { label: 'Persistence', key: 'persistence_pct', tooltip: 'Percentage of days this entity appeared in logs' },
-            { label: 'Max Absolute Δ', key: 'max_absolute_change', tooltip: 'Largest day-to-day increase in attacks' },
-            { label: 'Max % Δ', key: 'max_pct_change', tooltip: 'Largest day-to-day percentage increase' },
-            { label: 'Recent (7d)', key: 'recent_attacks', tooltip: 'Total attacks in the last 7 days of the dataset' },
-            { label: 'First Seen', key: 'first_seen', tooltip: 'First date this entity appeared in the logs' },
-            { label: 'Last Seen', key: 'last_seen', tooltip: 'Last date this entity appeared in the logs' },
-            { label: 'Max Daily', key: 'max_daily', tooltip: 'Highest single-day attack count' }
+            { label: 'Rank', key: null, tooltip: 'Position in the current sorted list', sortable: false },
+            { label: getDimensionLabel(), key: getDimensionKey(), tooltip: `The ${currentDimension} identifier`, sortable: false },
+            { label: 'Total Attacks', key: 'total_attacks', tooltip: 'Total number of attacks across all 69 days', sortable: true },
+            { label: 'Avg Daily', key: 'avg_daily', tooltip: 'Average attacks per day (only counting days with activity)', sortable: true },
+            { label: 'Persistence', key: 'persistence_pct', tooltip: 'Percentage of days this entity appeared in logs', sortable: true },
+            { label: 'Max Absolute Δ', key: 'max_absolute_change', tooltip: 'Largest day-to-day increase in attacks', sortable: true },
+            { label: 'Max % Δ', key: 'max_pct_change', tooltip: 'Largest day-to-day percentage increase', sortable: true },
+            { label: 'Recent (7d)', key: 'recent_attacks', tooltip: 'Total attacks in the last 7 days of the dataset', sortable: true },
+            { label: 'First Seen', key: 'first_seen', tooltip: 'First date this entity appeared in the logs', sortable: true },
+            { label: 'Last Seen', key: 'last_seen', tooltip: 'Last date this entity appeared in the logs', sortable: true },
+            { label: 'Max Daily', key: 'max_daily', tooltip: 'Highest single-day attack count', sortable: true }
         ];
         
         header.innerHTML = columns.map(col => {
-            if (!col.key) {
+            if (!col.sortable) {
                 return `<th title="${col.tooltip}">${col.label}</th>`;
             }
             
@@ -555,7 +738,44 @@ function resetFilters() {
 // Utility functions
 function formatNumber(num) {
     if (num === null || num === undefined) return '-';
+    
+    // Format large numbers as K or M
+    if (num >= 1000000) {
+        return (num / 1000000).toFixed(1) + 'M';
+    } else if (num >= 10000) {
+        return (num / 1000).toFixed(1) + 'K';
+    } else if (num >= 1000) {
+        return (num / 1000).toFixed(1) + 'K';
+    }
+    
     return num.toLocaleString();
+}
+
+function formatPercentage(num) {
+    if (num === null || num === undefined) return '-';
+    
+    // Format very large percentages (e.g., 94588500.53% -> 94.58M%)
+    if (num >= 1000000) {
+        return (num / 1000000).toFixed(2) + 'M%';
+    } else if (num >= 10000) {
+        return (num / 1000).toFixed(2) + 'K%';
+    }
+    
+    return num.toFixed(2) + '%';
+}
+
+function formatDate(dateStr) {
+    if (!dateStr || dateStr === '-') return '-';
+    
+    // Parse date string without timezone conversion
+    // dateStr format: "2022-11-01" or "2022-11-01T00:00:00"
+    const parts = dateStr.split('-');
+    const year = parseInt(parts[0]);
+    const month = parseInt(parts[1]) - 1; // JavaScript months are 0-indexed
+    const day = parseInt(parts[2].split('T')[0]); // Handle both "01" and "01T00:00:00"
+    
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${months[month]} ${day}, ${year}`;
 }
 
 function truncate(str, maxLen) {

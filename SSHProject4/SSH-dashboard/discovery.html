@@ -44,7 +44,7 @@
         <!-- Debug button on far right with tip below -->
         <div style="margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 5px;">
             <button id="show-debug-btn" onclick="toggleDebug()" style="padding: 8px 16px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; white-space: nowrap;">
-                📊 Show Debug
+                🔍 Ranking Calculator
             </button>
             <div style="color: #666; font-size: 12px; font-style: italic; white-space: nowrap;">
                 💡 Tip: Hold Ctrl/Cmd + Click to sort by multiple columns
@@ -55,7 +55,7 @@
     <!-- Debug Rankings (collapsible) -->
     <div id="debug-section" style="background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 20px; display: none;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-            <h3 style="margin: 0;">🔍 Ranking Debug View</h3>
+            <h3 style="margin: 0;">🔍 Multi-Column Ranking Calculator</h3>
             <button onclick="toggleDebug()" style="padding: 6px 12px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer;">Hide</button>
         </div>
         <div id="debug-content" style="font-family: 'Courier New', monospace; font-size: 12px; max-height: 400px; overflow-y: auto;">
@@ -80,6 +80,24 @@
             </tbody>
         </table>
     </div>
+
+    <!-- Loading Indicator -->
+    <div id="loading-indicator" style="display: none; text-align: center; padding: 20px; background: white; border-radius: 8px; margin-bottom: 20px;">
+        <div style="display: inline-block; width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid #667eea; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+        <p style="margin-top: 10px; color: #666;">Loading more data...</p>
+    </div>
+
+    <!-- Load More Button -->
+    <div id="load-more-container" style="text-align: center; margin-bottom: 20px; display: none;">
+        <!-- Button will be dynamically generated -->
+    </div>
+
+    <style>
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
 
     <!-- Pagination -->
     <div class="pagination">

@@ -14,6 +14,8 @@ def register_asn_summary(app):
     def get_asn_summary():
         """Get comprehensive summary data for all ASNs"""
         start, end = parse_date_params()
+        limit = request.args.get('limit', type=int, default=None)
+        offset = request.args.get('offset', type=int, default=0)
         
         conn = get_db()
         
@@ -115,6 +117,8 @@ def register_asn_summary(app):
             LEFT JOIN volatility_metrics vm ON s.asn_name = vm.asn_name
             LEFT JOIN last_7_days l7 ON s.asn_name = l7.asn_name
             ORDER BY s.total_attacks DESC
+            {f'LIMIT {limit}' if limit else ''}
+            {f'OFFSET {offset}' if offset > 0 else ''}
         """
         
         result = conn.execute(query).fetchall()
