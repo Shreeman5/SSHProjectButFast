@@ -13,9 +13,19 @@ async function loadTotalAttacks() {
         url += `&username=${encodeURIComponent(state.username)}`;
     }
     
-    // Add ASN filter
+    // Add ASN filter (single or multiple)
     if (state.asn) {
         url += `&asn=${encodeURIComponent(state.asn)}`;
+    } else if (state.asns && state.asns.length > 0) {
+        // Discovery mode - multiple ASNs
+        console.log('🐛 chart1 - state.asns:', state.asns);
+        console.log('🐛 chart1 - is Array?', Array.isArray(state.asns));
+        const joined = Array.isArray(state.asns) ? state.asns.join('|||') : state.asns;
+        console.log('🐛 chart1 - joined:', joined);
+        const encoded = encodeURIComponent(joined);
+        console.log('🐛 chart1 - encoded:', encoded);
+        url += `&asns=${encoded}`;
+        chartColor = '#f59e0b';  // Orange for multi-ASN discovery mode
     }
     
     // Add country filter (single or multiple)
@@ -29,10 +39,13 @@ async function loadTotalAttacks() {
     }
     
     // Fetch data
+    console.log('🐛 chart1 - full URL:', url);
     chartData = await fetch(url).then(r => r.json());
+    console.log('🐛 chart1 - response length:', chartData.length);
+    console.log('🐛 chart1 - first 3 records:', chartData.slice(0, 3));
     
-    // Set color based on active filter (only if not in multi-country mode)
-    if (!state.countries || state.countries.length === 0) {
+    // Set color based on active filter (only if not in multi-country/asn mode)
+    if ((!state.countries || state.countries.length === 0) && (!state.asns || state.asns.length === 0)) {
         if (state.ip) {
             chartColor = '#ff7f0e';  // Orange for IP
         } else if (state.username) {

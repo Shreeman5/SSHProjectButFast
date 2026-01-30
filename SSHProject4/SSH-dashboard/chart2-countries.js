@@ -12,6 +12,8 @@ async function loadCountryAttacks() {
 
     if (state.asn) {
         url += `&asn=${encodeURIComponent(state.asn)}`;
+    } else if (state.asns && state.asns.length > 0) {
+        url += `&asns=${encodeURIComponent(state.asns.join(','))}`;
     }
     
     if (state.ip) {

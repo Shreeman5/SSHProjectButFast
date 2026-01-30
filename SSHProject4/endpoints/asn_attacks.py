@@ -104,23 +104,31 @@ def register_asn_attacks(app):
         if asn_filter or asns_filter:
             if asns_filter:
                 asns = asns_filter.split('|||')
-                asn_list = ', '.join([f"'{a}'" for a in asns])
+                print(f"\n🔍 DEBUG ASN FILTER:")
+                print(f"   Raw parameter: {asns_filter}")
+                print(f"   After split: {asns}")
+                print(f"   Count: {len(asns)}")
+                asn_list = ', '.join([f"'{a.strip()}'" for a in asns])
                 asn_values = asns
             else:
                 asn_list = f"'{asn_filter}'"
                 asn_values = [asn_filter]
             
             # Build query for specific ASN(s) with ALL filters EXCEPT ASN
-            # (ASN is already constrained by the complete_grid)
+            # Only show ASNs that have actual data for the current filters
             query = f"""
-                WITH selected_asns AS (
-                    SELECT unnest(ARRAY[{asn_list}]) as asn_name
+                WITH selected_asns_with_data AS (
+                    SELECT DISTINCT asn_name
+                    FROM {table}
+                    WHERE date BETWEEN '{start}' AND '{end}'
+                      AND asn_name IN ({asn_list})
+                      AND {where_clause_without_asn}
                 ),
                 date_range AS (
                     SELECT UNNEST(generate_series(DATE '{start}', DATE '{end}', INTERVAL 1 DAY))::DATE as date
                 ),
                 complete_grid AS (
-                    SELECT d.date, s.asn_name FROM date_range d CROSS JOIN selected_asns s
+                    SELECT d.date, s.asn_name FROM date_range d CROSS JOIN selected_asns_with_data s
                 )
                 SELECT 
                     g.date::VARCHAR as date,

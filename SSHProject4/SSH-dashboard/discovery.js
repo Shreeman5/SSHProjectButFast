@@ -19,8 +19,9 @@ let sortColumns = ['total_attacks'];  // Array of columns to sort by
 let sortDirection = 'desc';  // Single direction for now (all columns same direction)
 let debugRankings = null;  // Store ranking debug info
 
-// Selection state (for countries only)
+// Selection state (for countries and ASNs only)
 let selectedCountries = new Set();
+let selectedASNs = new Set();
 const MAX_SELECTED = 10;
 
 // Toggle debug view
@@ -106,12 +107,18 @@ function updateDebugView() {
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
-    // Show Analyze Selected button on Countries tab (default)
+    // Show Analyze Selected button on Countries or ASN tab (defaults to country)
     if (currentDimension === 'country') {
         const analyzeBtn = document.getElementById('analyze-selected-btn');
         if (analyzeBtn) {
             analyzeBtn.style.display = 'block';
             updateSelectedCount();
+        }
+    } else if (currentDimension === 'asn') {
+        const analyzeBtn = document.getElementById('analyze-selected-btn');
+        if (analyzeBtn) {
+            analyzeBtn.style.display = 'block';
+            updateSelectedCountASN();
         }
     }
     
@@ -300,14 +307,20 @@ function switchDimension(dimension) {
     // Clear debug rankings
     debugRankings = null;
     
-    // Show/hide Analyze Selected button (only for countries)
+    // Show/hide Analyze Selected button (only for countries and ASNs)
     const analyzeBtn = document.getElementById('analyze-selected-btn');
     if (dimension === 'country') {
         analyzeBtn.style.display = 'block';
+        analyzeBtn.innerHTML = '📊 Analyze Selected (<span id="selected-count">0</span>/10)';
         updateSelectedCount();
+    } else if (dimension === 'asn') {
+        analyzeBtn.style.display = 'block';
+        analyzeBtn.innerHTML = '📊 Analyze Selected (<span id="selected-count">0</span>/10)';
+        updateSelectedCountASN();
     } else {
         analyzeBtn.style.display = 'none';
         selectedCountries.clear();
+        selectedASNs.clear();
     }
     
     // Update active button
@@ -592,7 +605,7 @@ function renderTable() {
     const tbody = document.getElementById('table-body');
     
     if (pageData.length === 0) {
-        const colspan = currentDimension === 'country' ? 13 : 12;
+        const colspan = (currentDimension === 'country' || currentDimension === 'asn') ? 13 : 12;
         tbody.innerHTML = `<tr><td colspan="${colspan}" style="text-align: center; padding: 40px;">No data found</td></tr>`;
         return;
     }
@@ -610,10 +623,36 @@ function renderTable() {
                     <td style="text-align: center;">
                         <input type="checkbox" 
                                class="country-checkbox" 
-                               data-country="${item.country}"
+                               data-country="${item.country.replace(/"/g, '&quot;')}"
                                ${isSelected ? 'checked' : ''}
                                ${isDisabled ? 'disabled' : ''}
-                               onchange="toggleCountrySelection('${item.country}')"
+                               style="cursor: ${isDisabled && !isSelected ? 'not-allowed' : 'pointer'}; width: 16px; height: 16px;">
+                    </td>
+                    <td>${rank}</td>
+                    <td><strong>${entityName}</strong></td>
+                    <td class="number">${formatNumber(item.total_attacks)}</td>
+                    <td class="number">${formatNumber(item.avg_daily)}</td>
+                    <td class="number">${formatPercentage(item.persistence_pct || 0)} ${item.active_days ? `(${item.active_days}d)` : ''}</td>
+                    <td class="number">${formatNumber(item.max_absolute_change || 0)}</td>
+                    <td class="number">${formatPercentage(item.max_pct_change || 0)}</td>
+                    <td class="number">${formatNumber(item.recent_attacks || 0)}</td>
+                    <td>${formatDate(item.first_seen)}</td>
+                    <td>${formatDate(item.last_seen)}</td>
+                    <td class="number">${formatNumber(item.max_daily || 0)}</td>
+                </tr>
+            `;
+        } else if (currentDimension === 'asn') {
+            const isSelected = selectedASNs.has(item.asn_name);
+            const isDisabled = !isSelected && selectedASNs.size >= MAX_SELECTED;
+            
+            return `
+                <tr>
+                    <td style="text-align: center;">
+                        <input type="checkbox" 
+                               class="asn-checkbox" 
+                               data-asn="${item.asn_name.replace(/"/g, '&quot;')}"
+                               ${isSelected ? 'checked' : ''}
+                               ${isDisabled ? 'disabled' : ''}
                                style="cursor: ${isDisabled && !isSelected ? 'not-allowed' : 'pointer'}; width: 16px; height: 16px;">
                     </td>
                     <td>${rank}</td>
@@ -651,6 +690,25 @@ function renderTable() {
     
     // Update pagination
     updatePagination();
+    
+    // Add event listeners for checkboxes (event delegation)
+    if (currentDimension === 'country') {
+        const checkboxes = document.querySelectorAll('.country-checkbox');
+        checkboxes.forEach(checkbox => {
+            checkbox.addEventListener('change', function() {
+                const countryName = this.getAttribute('data-country');
+                toggleCountrySelection(countryName);
+            });
+        });
+    } else if (currentDimension === 'asn') {
+        const checkboxes = document.querySelectorAll('.asn-checkbox');
+        checkboxes.forEach(checkbox => {
+            checkbox.addEventListener('change', function() {
+                const asnName = this.getAttribute('data-asn');
+                toggleASNSelection(asnName);
+            });
+        });
+    }
 }
 
 // Render table header with sort indicators
@@ -677,6 +735,46 @@ function renderHeader() {
             if (col.isCheckbox) {
                 return `<th style="width: 40px;" title="${col.tooltip}">
                     <input type="checkbox" id="select-all" onchange="toggleSelectAll()" 
+                           style="cursor: pointer; width: 16px; height: 16px;">
+                </th>`;
+            }
+            
+            if (!col.sortable) {
+                return `<th title="${col.tooltip}">${col.label}</th>`;
+            }
+            
+            const isInSortList = sortColumns.includes(col.key);
+            const sortIndex = sortColumns.indexOf(col.key);
+            const indicator = isInSortList ? 
+                (sortColumns.length === 1 ? 
+                    (sortDirection === 'desc' ? ' ▼' : ' ▲') : 
+                    ` [${sortIndex + 1}]`) : 
+                '';
+            const sortClass = isInSortList ? 'sorted' : '';
+            
+            return `<th class="${sortClass}" onclick="sortByColumn('${col.key}', event)" style="cursor: pointer; user-select: none;" title="${col.tooltip}">${col.label}${indicator}</th>`;
+        }).join('');
+    } else if (currentDimension === 'asn') {
+        // ASN dimension with checkboxes
+        const columns = [
+            { label: '', key: null, tooltip: 'Select for analysis', sortable: false, isCheckbox: true },
+            { label: 'Rank', key: null, tooltip: 'Position in the current sorted list', sortable: false },
+            { label: 'ASN', key: 'asn_name', tooltip: 'ASN organization name', sortable: false },
+            { label: 'Total Attacks', key: 'total_attacks', tooltip: 'Total number of attacks across all 69 days', sortable: true },
+            { label: 'Avg Daily', key: 'avg_daily', tooltip: 'Average attacks per day (only counting days with activity)', sortable: true },
+            { label: 'Persistence', key: 'persistence_pct', tooltip: 'Percentage of days this ASN appeared in logs', sortable: true },
+            { label: 'Max Absolute Δ', key: 'max_absolute_change', tooltip: 'Largest day-to-day increase in attacks', sortable: true },
+            { label: 'Max % Δ', key: 'max_pct_change', tooltip: 'Largest day-to-day percentage increase', sortable: true },
+            { label: 'Recent (7d)', key: 'recent_attacks', tooltip: 'Total attacks in the last 7 days of the dataset', sortable: true },
+            { label: 'First Seen', key: 'first_seen', tooltip: 'First date this ASN appeared in the logs', sortable: true },
+            { label: 'Last Seen', key: 'last_seen', tooltip: 'Last date this ASN appeared in the logs', sortable: true },
+            { label: 'Max Daily', key: 'max_daily', tooltip: 'Highest single-day attack count', sortable: true }
+        ];
+        
+        header.innerHTML = columns.map(col => {
+            if (col.isCheckbox) {
+                return `<th style="width: 40px;" title="${col.tooltip}">
+                    <input type="checkbox" id="select-all" onchange="toggleSelectAllASN()" 
                            style="cursor: pointer; width: 16px; height: 16px;">
                 </th>`;
             }
@@ -907,15 +1005,92 @@ function updateSelectedCount() {
 }
 
 function analyzeSelected() {
-    if (selectedCountries.size === 0) {
-        alert('Please select at least one country to analyze.');
+    if (selectedCountries.size === 0 && selectedASNs.size === 0) {
+        alert('Please select at least one country or ASN to analyze.');
         return;
     }
     
-    // Convert Set to Array and encode for URL
-    const countries = Array.from(selectedCountries);
-    const countriesParam = encodeURIComponent(countries.join(','));
+    let url = 'http://127.0.0.1:5500/SSH-dashboard/dashboard.html?';
     
-    // Open dashboard with selected countries (Live Server URL)
-    window.open(`http://127.0.0.1:5500/SSH-dashboard/dashboard.html?countries=${countriesParam}`, '_blank');
+    if (selectedCountries.size > 0) {
+        // Convert Set to Array and encode for URL
+        const countries = Array.from(selectedCountries);
+        const countriesParam = encodeURIComponent(countries.join(','));
+        url += `countries=${countriesParam}`;
+    } else if (selectedASNs.size > 0) {
+        // Convert Set to Array and encode for URL
+        // Use ||| delimiter to handle ASN names with commas
+        const asns = Array.from(selectedASNs);
+        console.log('🐛 DEBUG: selectedASNs Set:', selectedASNs);
+        console.log('🐛 DEBUG: asns array:', asns);
+        console.log('🐛 DEBUG: joined string:', asns.join('|||'));
+        const asnsParam = encodeURIComponent(asns.join('|||'));
+        console.log('🐛 DEBUG: encoded param:', asnsParam);
+        url += `asns=${asnsParam}`;
+    }
+    
+    console.log('🐛 DEBUG: final URL:', url);
+    // Open dashboard with selected entities
+    window.open(url, '_blank');
+}
+
+// ASN selection functions
+function toggleASNSelection(asnName) {
+    if (selectedASNs.has(asnName)) {
+        selectedASNs.delete(asnName);
+    } else {
+        if (selectedASNs.size < MAX_SELECTED) {
+            selectedASNs.add(asnName);
+        }
+    }
+    
+    updateSelectedCountASN();
+    renderTable(); // Re-render to update checkbox states
+}
+
+function toggleSelectAllASN() {
+    const selectAllCheckbox = document.getElementById('select-all');
+    
+    if (selectAllCheckbox.checked) {
+        // Select up to MAX_SELECTED ASNs from current page
+        const startIdx = (currentPage - 1) * pageSize;
+        const endIdx = startIdx + pageSize;
+        const pageData = filteredData.slice(startIdx, endIdx);
+        
+        for (const item of pageData) {
+            if (selectedASNs.size >= MAX_SELECTED) break;
+            selectedASNs.add(item.asn_name);
+        }
+    } else {
+        // Deselect all ASNs from current page
+        const startIdx = (currentPage - 1) * pageSize;
+        const endIdx = startIdx + pageSize;
+        const pageData = filteredData.slice(startIdx, endIdx);
+        
+        for (const item of pageData) {
+            selectedASNs.delete(item.asn_name);
+        }
+    }
+    
+    updateSelectedCountASN();
+    renderTable();
+}
+
+function updateSelectedCountASN() {
+    const countSpan = document.getElementById('selected-count');
+    if (countSpan) {
+        countSpan.textContent = selectedASNs.size;
+    }
+    
+    // Enable/disable Analyze button
+    const analyzeBtn = document.getElementById('analyze-selected-btn');
+    if (analyzeBtn && currentDimension === 'asn') {
+        if (selectedASNs.size === 0) {
+            analyzeBtn.style.opacity = '0.5';
+            analyzeBtn.style.cursor = 'not-allowed';
+        } else {
+            analyzeBtn.style.opacity = '1';
+            analyzeBtn.style.cursor = 'pointer';
+        }
+    }
 }

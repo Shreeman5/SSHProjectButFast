@@ -8,9 +8,21 @@ async function loadASNAttacks() {
         url += `&countries=${encodeURIComponent(state.countries.join(','))}`;
     }
     
+    // Priority: single ASN filter > multiple ASNs > no filter
     if (state.asn) {
         url += `&asn=${encodeURIComponent(state.asn)}`;
+    } else if (state.asns && state.asns.length > 0) {
+        // Discovery mode - multiple ASNs
+        console.log('🐛 chart6 - state.asns type:', typeof state.asns);
+        console.log('🐛 chart6 - state.asns is Array?', Array.isArray(state.asns));
+        console.log('🐛 chart6 - state.asns:', state.asns);
+        const joined = state.asns.join('|||');
+        console.log('🐛 chart6 - joined:', joined);
+        const encoded = encodeURIComponent(joined);
+        console.log('🐛 chart6 - encoded:', encoded);
+        url += `&asns=${encoded}`;
     }
+    
     if (state.ip) {
         url += `&ip=${encodeURIComponent(state.ip)}`;
     }

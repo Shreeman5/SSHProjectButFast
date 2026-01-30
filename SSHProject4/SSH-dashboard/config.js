@@ -12,9 +12,10 @@ let state = {
     endDate: '2023-01-08',
     country: null,
     countries: null,  // Array of selected countries from discovery.html
+    asn: null,
+    asns: null,  // Array of selected ASNs from discovery.html
     ip: null,
     username: null,
-    asn: null,
     dateRangeHistory: []
 };
 
@@ -32,7 +33,24 @@ function initState() {
     const countriesParam = params.get('countries');
     if (countriesParam) {
         state.countries = countriesParam.split(',').map(c => decodeURIComponent(c).trim());
-        console.log(`🎯 Discovery Mode: Analyzing ${state.countries.length} countries:`, state.countries);
+        console.log(`🎯 Discovery Mode (Countries): Analyzing ${state.countries.length} countries:`, state.countries);
+    }
+    
+    // Handle asns parameter (|||-separated list from discovery.html)
+    const asnsParam = params.get('asns');
+    console.log('🐛 DEBUG config.js - raw asnsParam:', asnsParam);
+    console.log('🐛 DEBUG config.js - asnsParam type:', typeof asnsParam);
+    console.log('🐛 DEBUG config.js - asnsParam length:', asnsParam ? asnsParam.length : 'null');
+    
+    if (asnsParam) {
+        // Check if it contains the separator
+        console.log('🐛 DEBUG config.js - contains |||?', asnsParam.includes('|||'));
+        console.log('🐛 DEBUG config.js - first 100 chars:', asnsParam.substring(0, 100));
+        
+        // URLSearchParams.get() automatically decodes the parameter
+        // So we just need to split by |||
+        state.asns = asnsParam.split('|||').map(a => a.trim()).filter(a => a.length > 0);
+        console.log(`🎯 Discovery Mode (ASNs): Analyzing ${state.asns.length} ASNs:`, state.asns);
     }
 }
 
