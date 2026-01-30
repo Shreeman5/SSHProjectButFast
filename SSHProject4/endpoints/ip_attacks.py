@@ -15,9 +15,23 @@ def register_ip_attacks(app):
         """Chart 4: Top IPs - with username filter support"""
         start, end = parse_date_params()
         country_filter = request.args.get('country')
+        countries_filter = request.args.get('countries')  # Comma-separated list from discovery
         asn_filter = request.args.get('asn')
         ip_filter = request.args.get('ip')
         username_filter = request.args.get('username')
+        
+        # Determine country condition for queries
+        if countries_filter:
+            countries = countries_filter.split(',')
+            country_list = ', '.join([f"'{c.strip()}'" for c in countries])
+            country_condition = f"country IN ({country_list})"
+            country_value = 'Mixed'
+        elif country_filter:
+            country_condition = f"country = '{country_filter}'"
+            country_value = country_filter
+        else:
+            country_condition = None
+            country_value = 'Mixed'
         
         conn = get_db()
         
@@ -27,7 +41,11 @@ def register_ip_attacks(app):
             
             if ip_filter:
                 where_conditions.append(f"u.IP = '{ip_filter}'")
-            if country_filter:
+            if countries_filter:
+                countries = countries_filter.split(',')
+                country_list = ', '.join([f"'{c.strip()}'" for c in countries])
+                where_conditions.append(f"u.country IN ({country_list})")
+            elif country_filter:
                 where_conditions.append(f"u.country = '{country_filter}'")
             if asn_filter:
                 where_conditions.append(f"u.asn_name = '{asn_filter}'")
@@ -80,6 +98,15 @@ def register_ip_attacks(app):
                     ORDER BY g.date, attacks DESC
                 """
         elif ip_filter:
+            # Build country constraint for the IP filter
+            country_where = ""
+            if country_filter:
+                country_where = f"AND i.country = '{country_filter}'"
+            elif countries_filter:
+                countries = countries_filter.split(',')
+                country_list = ', '.join([f"'{c.strip()}'" for c in countries])
+                country_where = f"AND i.country IN ({country_list})"
+            
             query = f"""
                 WITH date_range AS (
                     SELECT UNNEST(generate_series(DATE '{start}', DATE '{end}', INTERVAL 1 DAY))::DATE as date
@@ -90,17 +117,25 @@ def register_ip_attacks(app):
                     COALESCE(MAX(i.country), 'Unknown') as country,
                     COALESCE(SUM(i.attacks), 0) as attacks
                 FROM date_range d
-                LEFT JOIN daily_ip_attacks i ON d.date = i.date AND i.IP = '{ip_filter}'
+                LEFT JOIN daily_ip_attacks i ON d.date = i.date AND i.IP = '{ip_filter}' {country_where}
                 GROUP BY d.date
                 ORDER BY d.date
             """
-        elif asn_filter and country_filter:
+        elif country_filter or countries_filter:
+            if countries_filter:
+                countries = countries_filter.split(',')
+                country_list = ', '.join([f"'{c.strip()}'" for c in countries])
+                country_where = f"country IN ({country_list})"
+                asn_where = f"AND asn_name = '{asn_filter}'" if asn_filter else ""
+            else:
+                country_where = f"country = '{country_filter}'"
+                asn_where = f"AND asn_name = '{asn_filter}'" if asn_filter else ""
+            
             query = f"""
                 WITH top_ips AS (
                     SELECT IP
                     FROM daily_ip_attacks
-                    WHERE date BETWEEN '{start}' AND '{end}'
-                      AND asn_name = '{asn_filter}' AND country = '{country_filter}'
+                    WHERE date BETWEEN '{start}' AND '{end}' AND {country_where} {asn_where}
                     GROUP BY IP
                     ORDER BY SUM(attacks) DESC
                     LIMIT 10
@@ -114,39 +149,11 @@ def register_ip_attacks(app):
                 SELECT 
                     g.date::VARCHAR as date,
                     g.IP,
-                    COALESCE(MAX(i.country), '{country_filter}') as country,
+                    COALESCE(MAX(i.country), '{country_value}') as country,
                     COALESCE(SUM(i.attacks), 0) as attacks
                 FROM complete_grid g
                 LEFT JOIN daily_ip_attacks i 
-                    ON g.date = i.date AND g.IP = i.IP
-                    AND i.asn_name = '{asn_filter}' AND i.country = '{country_filter}'
-                GROUP BY g.date, g.IP
-                ORDER BY g.date, attacks DESC
-            """
-        elif country_filter:
-            query = f"""
-                WITH top_ips AS (
-                    SELECT IP
-                    FROM daily_ip_attacks
-                    WHERE date BETWEEN '{start}' AND '{end}' AND country = '{country_filter}'
-                    GROUP BY IP
-                    ORDER BY SUM(attacks) DESC
-                    LIMIT 10
-                ),
-                date_range AS (
-                    SELECT UNNEST(generate_series(DATE '{start}', DATE '{end}', INTERVAL 1 DAY))::DATE as date
-                ),
-                complete_grid AS (
-                    SELECT d.date, t.IP FROM date_range d CROSS JOIN top_ips t
-                )
-                SELECT 
-                    g.date::VARCHAR as date,
-                    g.IP,
-                    COALESCE(MAX(i.country), '{country_filter}') as country,
-                    COALESCE(SUM(i.attacks), 0) as attacks
-                FROM complete_grid g
-                LEFT JOIN daily_ip_attacks i 
-                    ON g.date = i.date AND g.IP = i.IP AND i.country = '{country_filter}'
+                    ON g.date = i.date AND g.IP = i.IP AND {country_where} {asn_where}
                 GROUP BY g.date, g.IP
                 ORDER BY g.date, attacks DESC
             """

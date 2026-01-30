@@ -19,6 +19,10 @@ let sortColumns = ['total_attacks'];  // Array of columns to sort by
 let sortDirection = 'desc';  // Single direction for now (all columns same direction)
 let debugRankings = null;  // Store ranking debug info
 
+// Selection state (for countries only)
+let selectedCountries = new Set();
+const MAX_SELECTED = 10;
+
 // Toggle debug view
 function toggleDebug() {
     const debugSection = document.getElementById('debug-section');
@@ -102,6 +106,15 @@ function updateDebugView() {
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
+    // Show Analyze Selected button on Countries tab (default)
+    if (currentDimension === 'country') {
+        const analyzeBtn = document.getElementById('analyze-selected-btn');
+        if (analyzeBtn) {
+            analyzeBtn.style.display = 'block';
+            updateSelectedCount();
+        }
+    }
+    
     loadData();
 });
 
@@ -286,6 +299,16 @@ function switchDimension(dimension) {
     
     // Clear debug rankings
     debugRankings = null;
+    
+    // Show/hide Analyze Selected button (only for countries)
+    const analyzeBtn = document.getElementById('analyze-selected-btn');
+    if (dimension === 'country') {
+        analyzeBtn.style.display = 'block';
+        updateSelectedCount();
+    } else {
+        analyzeBtn.style.display = 'none';
+        selectedCountries.clear();
+    }
     
     // Update active button
     document.querySelectorAll('.dim-btn').forEach(btn => btn.classList.remove('active'));
@@ -569,7 +592,8 @@ function renderTable() {
     const tbody = document.getElementById('table-body');
     
     if (pageData.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="12" style="text-align: center; padding: 40px;">No data found</td></tr>';
+        const colspan = currentDimension === 'country' ? 13 : 12;
+        tbody.innerHTML = `<tr><td colspan="${colspan}" style="text-align: center; padding: 40px;">No data found</td></tr>`;
         return;
     }
     
@@ -577,22 +601,52 @@ function renderTable() {
         const rank = startIdx + idx + 1;
         const entityName = getEntityName(item);
         
-        // Use same columns for all dimensions with proper formatting
-        return `
-            <tr>
-                <td>${rank}</td>
-                <td><strong>${entityName}</strong></td>
-                <td class="number">${formatNumber(item.total_attacks)}</td>
-                <td class="number">${formatNumber(item.avg_daily)}</td>
-                <td class="number">${formatPercentage(item.persistence_pct || 0)} ${item.active_days ? `(${item.active_days}d)` : ''}</td>
-                <td class="number">${formatNumber(item.max_absolute_change || 0)}</td>
-                <td class="number">${formatPercentage(item.max_pct_change || 0)}</td>
-                <td class="number">${formatNumber(item.recent_attacks || 0)}</td>
-                <td>${formatDate(item.first_seen)}</td>
-                <td>${formatDate(item.last_seen)}</td>
-                <td class="number">${formatNumber(item.max_daily || 0)}</td>
-            </tr>
-        `;
+        if (currentDimension === 'country') {
+            const isSelected = selectedCountries.has(item.country);
+            const isDisabled = !isSelected && selectedCountries.size >= MAX_SELECTED;
+            
+            return `
+                <tr>
+                    <td style="text-align: center;">
+                        <input type="checkbox" 
+                               class="country-checkbox" 
+                               data-country="${item.country}"
+                               ${isSelected ? 'checked' : ''}
+                               ${isDisabled ? 'disabled' : ''}
+                               onchange="toggleCountrySelection('${item.country}')"
+                               style="cursor: ${isDisabled && !isSelected ? 'not-allowed' : 'pointer'}; width: 16px; height: 16px;">
+                    </td>
+                    <td>${rank}</td>
+                    <td><strong>${entityName}</strong></td>
+                    <td class="number">${formatNumber(item.total_attacks)}</td>
+                    <td class="number">${formatNumber(item.avg_daily)}</td>
+                    <td class="number">${formatPercentage(item.persistence_pct || 0)} ${item.active_days ? `(${item.active_days}d)` : ''}</td>
+                    <td class="number">${formatNumber(item.max_absolute_change || 0)}</td>
+                    <td class="number">${formatPercentage(item.max_pct_change || 0)}</td>
+                    <td class="number">${formatNumber(item.recent_attacks || 0)}</td>
+                    <td>${formatDate(item.first_seen)}</td>
+                    <td>${formatDate(item.last_seen)}</td>
+                    <td class="number">${formatNumber(item.max_daily || 0)}</td>
+                </tr>
+            `;
+        } else {
+            // Use same columns for other dimensions with proper formatting
+            return `
+                <tr>
+                    <td>${rank}</td>
+                    <td><strong>${entityName}</strong></td>
+                    <td class="number">${formatNumber(item.total_attacks)}</td>
+                    <td class="number">${formatNumber(item.avg_daily)}</td>
+                    <td class="number">${formatPercentage(item.persistence_pct || 0)} ${item.active_days ? `(${item.active_days}d)` : ''}</td>
+                    <td class="number">${formatNumber(item.max_absolute_change || 0)}</td>
+                    <td class="number">${formatPercentage(item.max_pct_change || 0)}</td>
+                    <td class="number">${formatNumber(item.recent_attacks || 0)}</td>
+                    <td>${formatDate(item.first_seen)}</td>
+                    <td>${formatDate(item.last_seen)}</td>
+                    <td class="number">${formatNumber(item.max_daily || 0)}</td>
+                </tr>
+            `;
+        }
     }).join('');
     
     // Update pagination
@@ -605,6 +659,7 @@ function renderHeader() {
     
     if (currentDimension === 'country') {
         const columns = [
+            { label: '', key: null, tooltip: 'Select for analysis', sortable: false, isCheckbox: true },
             { label: 'Rank', key: null, tooltip: 'Position in the current sorted list', sortable: false },
             { label: 'Country', key: 'country', tooltip: 'Country where the attacks originated', sortable: false },
             { label: 'Total Attacks', key: 'total_attacks', tooltip: 'Total number of attacks across all 69 days', sortable: true },
@@ -619,6 +674,13 @@ function renderHeader() {
         ];
         
         header.innerHTML = columns.map(col => {
+            if (col.isCheckbox) {
+                return `<th style="width: 40px;" title="${col.tooltip}">
+                    <input type="checkbox" id="select-all" onchange="toggleSelectAll()" 
+                           style="cursor: pointer; width: 16px; height: 16px;">
+                </th>`;
+            }
+            
             if (!col.sortable) {
                 return `<th title="${col.tooltip}">${col.label}</th>`;
             }
@@ -781,4 +843,79 @@ function formatDate(dateStr) {
 function truncate(str, maxLen) {
     if (!str) return '-';
     return str.length > maxLen ? str.substring(0, maxLen) + '...' : str;
+}
+
+// Country selection functions
+function toggleCountrySelection(country) {
+    if (selectedCountries.has(country)) {
+        selectedCountries.delete(country);
+    } else {
+        if (selectedCountries.size < MAX_SELECTED) {
+            selectedCountries.add(country);
+        }
+    }
+    
+    updateSelectedCount();
+    renderTable(); // Re-render to update checkbox states
+}
+
+function toggleSelectAll() {
+    const selectAllCheckbox = document.getElementById('select-all');
+    
+    if (selectAllCheckbox.checked) {
+        // Select up to MAX_SELECTED countries from current page
+        const startIdx = (currentPage - 1) * pageSize;
+        const endIdx = startIdx + pageSize;
+        const pageData = filteredData.slice(startIdx, endIdx);
+        
+        for (const item of pageData) {
+            if (selectedCountries.size >= MAX_SELECTED) break;
+            selectedCountries.add(item.country);
+        }
+    } else {
+        // Deselect all countries from current page
+        const startIdx = (currentPage - 1) * pageSize;
+        const endIdx = startIdx + pageSize;
+        const pageData = filteredData.slice(startIdx, endIdx);
+        
+        for (const item of pageData) {
+            selectedCountries.delete(item.country);
+        }
+    }
+    
+    updateSelectedCount();
+    renderTable();
+}
+
+function updateSelectedCount() {
+    const countSpan = document.getElementById('selected-count');
+    if (countSpan) {
+        countSpan.textContent = selectedCountries.size;
+    }
+    
+    // Enable/disable Analyze button
+    const analyzeBtn = document.getElementById('analyze-selected-btn');
+    if (analyzeBtn && currentDimension === 'country') {
+        if (selectedCountries.size === 0) {
+            analyzeBtn.style.opacity = '0.5';
+            analyzeBtn.style.cursor = 'not-allowed';
+        } else {
+            analyzeBtn.style.opacity = '1';
+            analyzeBtn.style.cursor = 'pointer';
+        }
+    }
+}
+
+function analyzeSelected() {
+    if (selectedCountries.size === 0) {
+        alert('Please select at least one country to analyze.');
+        return;
+    }
+    
+    // Convert Set to Array and encode for URL
+    const countries = Array.from(selectedCountries);
+    const countriesParam = encodeURIComponent(countries.join(','));
+    
+    // Open dashboard with selected countries (Live Server URL)
+    window.open(`http://127.0.0.1:5500/SSH-dashboard/dashboard.html?countries=${countriesParam}`, '_blank');
 }

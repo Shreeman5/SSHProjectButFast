@@ -1,8 +1,13 @@
 async function loadCountryAttacks() {
     let url = `${API_BASE}/country_attacks?start=${state.startDate}&end=${state.endDate}`;
     
+    // Priority: single country filter > multiple countries > no filter
     if (state.country) {
+        // Drilling down to single country (even if in discovery mode)
         url += `&country=${encodeURIComponent(state.country)}`;
+    } else if (state.countries && state.countries.length > 0) {
+        // Discovery mode - multiple countries
+        url += `&countries=${encodeURIComponent(state.countries.join(','))}`;
     }
 
     if (state.asn) {
@@ -25,7 +30,18 @@ async function loadCountryAttacks() {
     renderMultiLineChart('countrychart', seriesArray, {
         yKey: 'attacks',
         onClick: (country) => {
-            if (state.country === country) {
+            // When in discovery mode (multiple countries), clicking filters to just that country
+            // but keeps state.countries so "Restore" goes back to discovery mode
+            if (state.countries && state.countries.length > 0) {
+                // Drill down to single country (but preserve state.countries)
+                if (state.country === country) {
+                    // Clicking same country = restore to all discovery countries
+                    state.country = null;
+                } else {
+                    // Click different country = filter to that country
+                    state.country = country;
+                }
+            } else if (state.country === country) {
                 state.country = null;
             } else {
                 state.country = country;

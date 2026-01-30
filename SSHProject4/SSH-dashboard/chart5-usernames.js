@@ -1,9 +1,13 @@
 async function loadUsernameAttacks() {
     let url = `${API_BASE}/username_attacks?start=${state.startDate}&end=${state.endDate}`;
     
+    // Priority: single country filter > multiple countries > no filter
     if (state.country) {
         url += `&country=${encodeURIComponent(state.country)}`;
+    } else if (state.countries && state.countries.length > 0) {
+        url += `&countries=${encodeURIComponent(state.countries.join(','))}`;
     }
+    
     if (state.asn) {
         url += `&asn=${encodeURIComponent(state.asn)}`;
     }

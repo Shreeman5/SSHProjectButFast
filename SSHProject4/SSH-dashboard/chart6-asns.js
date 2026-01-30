@@ -1,9 +1,13 @@
 async function loadASNAttacks() {
     let url = `${API_BASE}/asn_attacks?start=${state.startDate}&end=${state.endDate}`;
     
+    // Priority: single country filter > multiple countries > no filter
     if (state.country) {
         url += `&country=${encodeURIComponent(state.country)}`;
+    } else if (state.countries && state.countries.length > 0) {
+        url += `&countries=${encodeURIComponent(state.countries.join(','))}`;
     }
+    
     if (state.asn) {
         url += `&asn=${encodeURIComponent(state.asn)}`;
     }

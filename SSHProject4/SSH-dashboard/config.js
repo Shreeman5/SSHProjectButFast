@@ -4,13 +4,14 @@
 const API_BASE = 'http://localhost:5000/api';
 const CHART_WIDTH = 1800;
 const CHART_HEIGHT = 370;
-const MARGIN = {top: 20, right: 40, bottom: 50, left: 70};  // Increased left margin from 50 to 70
+const MARGIN = {top: 20, right: 40, bottom: 50, left: 50};
 
 // Global state
 let state = {
     startDate: '2022-11-01',
     endDate: '2023-01-08',
     country: null,
+    countries: null,  // Array of selected countries from discovery.html
     ip: null,
     username: null,
     asn: null,
@@ -26,6 +27,13 @@ function initState() {
     state.startDate = params.get('start') || state.startDate;
     state.endDate = params.get('end') || state.endDate;
     state.country = params.get('country') || null;
+    
+    // Handle countries parameter (comma-separated list from discovery.html)
+    const countriesParam = params.get('countries');
+    if (countriesParam) {
+        state.countries = countriesParam.split(',').map(c => decodeURIComponent(c).trim());
+        console.log(`🎯 Discovery Mode: Analyzing ${state.countries.length} countries:`, state.countries);
+    }
 }
 
 function updateFilterInfo() {
@@ -347,7 +355,16 @@ function updateURL() {
     const params = new URLSearchParams();
     params.set('start', state.startDate);
     params.set('end', state.endDate);
-    if (state.country) params.set('country', state.country);
+    
+    // Preserve countries from discovery mode
+    if (state.countries && state.countries.length > 0) {
+        params.set('countries', state.countries.join(','));
+    }
+    
+    // Single country filter (only if not in discovery mode)
+    if (state.country && !state.countries) {
+        params.set('country', state.country);
+    }
     
     window.history.pushState({}, '', `?${params.toString()}`);
 }
@@ -363,3 +380,11 @@ async function loadAllCharts() {
     
     await Promise.all(chartsToLoad);
 }
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', () => {
+    console.log('🚀 Initializing dashboard...');
+    initState();
+    updateFilterInfo();
+    loadAllCharts();
+});

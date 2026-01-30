@@ -15,6 +15,7 @@ def register_total_attacks(app):
         """Chart 1: Total attacks over time - with username filter support"""
         start, end = parse_date_params()
         country_filter = request.args.get('country')
+        countries_filter = request.args.get('countries')  # Comma-separated list from discovery
         asn_filter = request.args.get('asn')
         ip_filter = request.args.get('ip')
         username_filter = request.args.get('username')
@@ -27,7 +28,11 @@ def register_total_attacks(app):
             
             if ip_filter:
                 where_conditions.append(f"u.IP = '{ip_filter}'")
-            if country_filter:
+            if countries_filter:
+                countries = countries_filter.split(',')
+                country_list = ', '.join([f"'{c.strip()}'" for c in countries])
+                where_conditions.append(f"u.country IN ({country_list})")
+            elif country_filter:
                 where_conditions.append(f"u.country = '{country_filter}'")
             if asn_filter:
                 where_conditions.append(f"u.asn_name = '{asn_filter}'")
@@ -60,7 +65,14 @@ def register_total_attacks(app):
                 GROUP BY d.date
                 ORDER BY d.date
             """).fetchall()
-        elif asn_filter and country_filter:
+        elif asn_filter and (country_filter or countries_filter):
+            if countries_filter:
+                countries = countries_filter.split(',')
+                country_list = ', '.join([f"'{c.strip()}'" for c in countries])
+                country_condition = f"a.country IN ({country_list})"
+            else:
+                country_condition = f"a.country = '{country_filter}'"
+            
             result = conn.execute(f"""
                 WITH date_range AS (
                     SELECT UNNEST(generate_series(DATE '{start}', DATE '{end}', INTERVAL 1 DAY))::DATE as date
@@ -70,7 +82,25 @@ def register_total_attacks(app):
                     COALESCE(SUM(a.attacks), 0) as attacks
                 FROM date_range d
                 LEFT JOIN daily_asn_attacks a
-                    ON d.date = a.date AND a.asn_name = '{asn_filter}' AND a.country = '{country_filter}'
+                    ON d.date = a.date AND a.asn_name = '{asn_filter}' AND {country_condition}
+                GROUP BY d.date
+                ORDER BY d.date
+            """).fetchall()
+        elif countries_filter:
+            # Multiple countries from discovery dashboard
+            countries = countries_filter.split(',')
+            country_list = ', '.join([f"'{c.strip()}'" for c in countries])
+            
+            result = conn.execute(f"""
+                WITH date_range AS (
+                    SELECT UNNEST(generate_series(DATE '{start}', DATE '{end}', INTERVAL 1 DAY))::DATE as date
+                )
+                SELECT 
+                    d.date::VARCHAR as date,
+                    COALESCE(SUM(c.attacks), 0) as attacks
+                FROM date_range d
+                LEFT JOIN daily_country_attacks c 
+                    ON d.date = c.date AND c.country IN ({country_list})
                 GROUP BY d.date
                 ORDER BY d.date
             """).fetchall()

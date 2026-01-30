@@ -24,7 +24,7 @@ def register_asn_attacks(app):
         username_filter = request.args.get('username')
         
         # Batch filters (plural)
-        countries_filter = request.args.get('countries')
+        countries_filter = request.args.get('countries')  # Comma-separated from discovery
         asns_filter = request.args.get('asns')
         ips_filter = request.args.get('ips')
         usernames_filter = request.args.get('usernames')
@@ -87,8 +87,8 @@ def register_asn_attacks(app):
         
         # Country filter
         if countries_filter:
-            countries = countries_filter.split('|||')
-            country_list = ', '.join([f"'{c}'" for c in countries])
+            countries = countries_filter.split(',')  # Changed from '|||' to ','
+            country_list = ', '.join([f"'{c.strip()}'" for c in countries])  # Added .strip()
             condition = f"country IN ({country_list})"
             where_conditions_with_asn.append(condition)
             where_conditions_without_asn.append(condition)
