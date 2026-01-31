@@ -28,6 +28,16 @@ function renderTable() {
             const isDisabled = !isSelected && selectedCountries.size >= MAX_SELECTED;
             
             // Build row HTML dynamically based on visible columns
+            // Get attack profile badge
+            const profileBadges = {
+                'High-Volume Spray': '<span style="background: #3b82f6; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-left: 6px;" title="Many IPs, many usernames">🌊 Spray</span>',
+                'Targeted Brute Force': '<span style="background: #ef4444; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-left: 6px;" title="Few IPs, many attempts on few usernames">🎯 Brute</span>',
+                'Distributed Botnet': '<span style="background: #8b5cf6; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-left: 6px;" title="Many ASNs, many IPs">🕸️ Botnet</span>',
+                'Single Source': '<span style="background: #10b981; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-left: 6px;" title="One ASN, few IPs">📍 Single</span>',
+                'General Scanning': '<span style="background: #6b7280; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-left: 6px;" title="General attack pattern">🔍 Scan</span>'
+            };
+            const badge = profileBadges[item.attack_profile] || '';
+            
             let rowHTML = `
                 <tr>
                     <td style="text-align: center;">
@@ -39,7 +49,7 @@ function renderTable() {
                                style="cursor: ${isDisabled && !isSelected ? 'not-allowed' : 'pointer'}; width: 16px; height: 16px;">
                     </td>
                     <td>${rank}</td>
-                    <td><strong>${entityName}</strong></td>`;
+                    <td><strong>${entityName}</strong>${badge}</td>`;
             
             // Add all visible columns dynamically
             const prefs = columnPreferences[currentDimension];
@@ -374,6 +384,15 @@ function analyzeSelected() {
 function renderColumnData(item, columnKey) {
     const value = item[columnKey];
     
+    // Check if this column is currently being sorted
+    const isSorted = sortColumns.includes(columnKey) || 
+                     (columnKey === 'asn_concentration' && sortColumns.includes('asn_concentration')) ||
+                     (columnKey === 'ip_concentration' && sortColumns.includes('ip_concentration')) ||
+                     (columnKey === 'username_concentration' && sortColumns.includes('username_concentration')) ||
+                     (columnKey === 'trend_sparkline' && sortColumns.includes('trend_sparkline'));
+    
+    const sortedClass = isSorted ? ' sorted-col' : '';
+    
     // Handle different column types
     switch(columnKey) {
         // Numeric columns
@@ -385,24 +404,24 @@ function renderColumnData(item, columnKey) {
         case 'unique_asns':
         case 'unique_ips':
         case 'unique_usernames':
-            return `<td class="number">${formatNumber(value || 0)}</td>`;
+            return `<td class="number${sortedClass}">${formatNumber(value || 0)}</td>`;
         
         // Percentage columns
         case 'max_pct_change':
-            return `<td class="number">${formatPercentage(value || 0)}</td>`;
+            return `<td class="number${sortedClass}">${formatPercentage(value || 0)}</td>`;
         
         // Persistence (percentage + days)
         case 'persistence_pct':
-            return `<td class="number">${formatPercentage(value || 0)} ${item.active_days ? `(${item.active_days}d)` : ''}</td>`;
+            return `<td class="number${sortedClass}">${formatPercentage(value || 0)} ${item.active_days ? `(${item.active_days}d)` : ''}</td>`;
         
         // Date columns
         case 'first_seen':
         case 'last_seen':
-            return `<td>${formatDate(value)}</td>`;
+            return `<td class="${sortedClass.trim()}">${formatDate(value)}</td>`;
         
         // Concentration columns (show top 3 with visual formatting)
         case 'asn_concentration':
-            if (!value) return `<td style="text-align: center;">-</td>`;
+            if (!value) return `<td class="${sortedClass.trim()}" style="text-align: center;">-</td>`;
             
             // ASN names can contain commas, so we use ||| as delimiter
             const asnItems = value.split('|||');
@@ -412,11 +431,11 @@ function renderColumnData(item, columnKey) {
                 return `<div style="padding: 2px 0;">${emoji} ${item}</div>`;
             }).join('');
             
-            return `<td style="font-size: 11px; line-height: 1.4;">${asnFormatted}</td>`;
+            return `<td class="${sortedClass.trim()}" style="font-size: 11px; line-height: 1.4;">${asnFormatted}</td>`;
         
         case 'ip_concentration':
         case 'username_concentration':
-            if (!value) return `<td style="text-align: center;">-</td>`;
+            if (!value) return `<td class="${sortedClass.trim()}" style="text-align: center;">-</td>`;
             
             // IPs and usernames use standard comma delimiter
             const items = value.split(', ');
@@ -426,24 +445,65 @@ function renderColumnData(item, columnKey) {
                 return `<div style="padding: 2px 0;">${emoji} ${item}</div>`;
             }).join('');
             
-            return `<td style="font-size: 11px; line-height: 1.4;">${formatted}</td>`;
+            return `<td class="${sortedClass.trim()}" style="font-size: 11px; line-height: 1.4;">${formatted}</td>`;
         
-        // Sparkline
+        // Sparkline - mini line chart
         case 'trend_sparkline':
-            return `<td><div style="width: 60px; height: 20px; background: #f0f0f0;">📊</div></td>`;
+            const sparklineData = item.sparkline_values;
+            if (!sparklineData) return `<td style="text-align: center;">-</td>`;
+            
+            const values = sparklineData.split(',').map(v => parseInt(v) || 0);
+            if (values.length === 0) return `<td style="text-align: center;">-</td>`;
+            
+            const width = 80;
+            const height = 25;
+            const padding = 2;
+            const max = Math.max(...values, 1);
+            const min = Math.min(...values);
+            const range = max - min || 1;
+            
+            // Generate SVG path points
+            const points = values.map((val, idx) => {
+                const x = padding + (idx / (values.length - 1)) * (width - 2 * padding);
+                const y = height - padding - ((val - min) / range) * (height - 2 * padding);
+                return `${x},${y}`;
+            }).join(' ');
+            
+            const svg = `
+                <svg width="${width}" height="${height}" style="display: block;">
+                    <polyline 
+                        points="${points}" 
+                        fill="none" 
+                        stroke="#667eea" 
+                        stroke-width="1.5"
+                        stroke-linejoin="round"
+                    />
+                    ${values.map((val, idx) => {
+                        const x = padding + (idx / (values.length - 1)) * (width - 2 * padding);
+                        const y = height - padding - ((val - min) / range) * (height - 2 * padding);
+                        return `<circle cx="${x}" cy="${y}" r="2" fill="#667eea" style="cursor: pointer;">
+                            <title>Week ${idx + 1}: ${formatNumber(val)} attacks</title>
+                        </circle>`;
+                    }).join('')}
+                </svg>
+            `;
+            
+            return `<td class="${sortedClass.trim()}" style="padding: 4px;">${svg}</td>`;
+        
+        
         
         // Rotation rates (decimal)
         case 'ip_rotation':
         case 'asn_rotation':
         case 'username_rotation':
-            return `<td class="number">${typeof value === 'number' ? value.toFixed(1) : '-'}</td>`;
+            return `<td class="number${sortedClass}">${typeof value === 'number' ? value.toFixed(1) : '-'}</td>`;
         
         // Burst intensity (ratio)
         case 'burst_intensity':
-            return `<td class="number">${typeof value === 'number' ? value.toFixed(1) + 'x' : '-'}</td>`;
+            return `<td class="number${sortedClass}">${typeof value === 'number' ? value.toFixed(1) + 'x' : '-'}</td>`;
         
         default:
-            return `<td class="number">${formatNumber(value || 0)}</td>`;
+            return `<td class="number${sortedClass}">${formatNumber(value || 0)}</td>`;
     }
 }
 

@@ -200,10 +200,20 @@
         }
         
         /* Sort indicator colors */
+        th.sorted-desc {
+            background: linear-gradient(to bottom, #d1fae5 0%, #f0fdf4 100%); /* Light green gradient */
+            font-weight: 600;
+        }
+        
         th.sorted-desc::after {
             content: ' ▼';
             color: #10b981; /* Green for descending (high to low) */
             font-size: 0.8em;
+        }
+        
+        th.sorted-asc {
+            background: linear-gradient(to bottom, #fed7aa 0%, #fef3c7 100%); /* Light orange gradient */
+            font-weight: 600;
         }
         
         th.sorted-asc::after {
@@ -213,7 +223,18 @@
         }
         
         th.sorted-multi {
+            background: linear-gradient(to bottom, #ddd6fe 0%, #ede9fe 100%); /* Light purple gradient */
             color: #667eea; /* Purple for multi-column sort */
+            font-weight: 600;
+        }
+        
+        /* Highlight sorted column cells with black borders using box-shadow */
+        td.sorted-col {
+            box-shadow: 
+                inset 2px 0 0 0 #000,    /* Left border */
+                inset -2px 0 0 0 #000,   /* Right border */
+                inset 0 1px 0 0 #e5e7eb, /* Top border (light) */
+                inset 0 -1px 0 0 #e5e7eb; /* Bottom border (light) */
         }
     </style>
 

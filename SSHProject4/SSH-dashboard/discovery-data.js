@@ -314,12 +314,28 @@ function calculateRanks(data, column) {
 
 // Sort data based on current sortColumns
 function sortData() {
+    // Helper function to calculate trend score from sparkline data
+    const calculateTrendScore = (sparklineValues) => {
+        if (!sparklineValues) return 0;
+        const values = sparklineValues.split(',').map(v => parseInt(v) || 0);
+        if (values.length < 2) return 0;
+        
+        let score = 0;
+        for (let i = 0; i < values.length - 1; i++) {
+            if (values[i + 1] > values[i]) score += 1;
+            else if (values[i + 1] < values[i]) score -= 1;
+            // If equal, score += 0 (no change)
+        }
+        return score;
+    };
+    
     // Helper function to map concentration display columns to sortable numeric fields
     const getSortKey = (column) => {
         const concentrationMap = {
             'asn_concentration': 'asn_top1_pct',
             'ip_concentration': 'ip_top1_pct',
-            'username_concentration': 'username_top1_pct'
+            'username_concentration': 'username_top1_pct',
+            'trend_sparkline': 'sparkline_values'
         };
         return concentrationMap[column] || column;
     };
@@ -333,6 +349,12 @@ function sortData() {
         filteredData.sort((a, b) => {
             let aVal = a[sortKey];
             let bVal = b[sortKey];
+            
+            // Special handling for sparkline trend sorting
+            if (sortColumns[0] === 'trend_sparkline') {
+                aVal = calculateTrendScore(aVal);
+                bVal = calculateTrendScore(bVal);
+            }
             
             if (aVal === null || aVal === undefined) aVal = sortDirection === 'desc' ? -Infinity : Infinity;
             if (bVal === null || bVal === undefined) bVal = sortDirection === 'desc' ? -Infinity : Infinity;
