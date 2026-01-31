@@ -43,11 +43,29 @@
         
         <!-- Debug button on far right with tip below -->
         <div style="margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 5px;">
-            <div style="display: flex; gap: 10px;">
-                <!-- Analyze Selected button (only for countries) -->
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <!-- Analyze Selected button (only for countries/ASNs) -->
                 <button id="analyze-selected-btn" onclick="analyzeSelected()" style="padding: 8px 16px; background: #10b981; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; white-space: nowrap; display: none;">
                     📊 Analyze Selected (<span id="selected-count">0</span>/10)
                 </button>
+                
+                <!-- Columns Selector -->
+                <div style="position: relative; display: inline-block;">
+                    <button id="column-selector-btn" onclick="toggleColumnSelector()" style="padding: 8px 16px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; white-space: nowrap;">
+                        ⚙️ Columns ▾
+                    </button>
+                    <div id="column-selector-dropdown" class="column-dropdown" style="display: none;">
+                        <div class="column-dropdown-header">
+                            <button onclick="selectAllColumns()" class="column-action-btn">Select All</button>
+                            <button onclick="deselectAllColumns()" class="column-action-btn">Deselect All</button>
+                        </div>
+                        <div class="column-dropdown-body" id="column-checkboxes">
+                            <!-- Dynamically populated based on dimension -->
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Ranking Calculator button -->
                 <button id="show-debug-btn" onclick="toggleDebug()" style="padding: 8px 16px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; white-space: nowrap;">
                     🔍 Ranking Calculator
                 </button>
@@ -103,6 +121,100 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+        
+        /* Column Selector Dropdown Styles */
+        .column-dropdown {
+            position: absolute;
+            top: 100%;
+            right: 0;
+            margin-top: 8px;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            min-width: 300px;
+            z-index: 1000;
+        }
+        
+        .column-dropdown-header {
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            gap: 8px;
+            justify-content: space-between;
+        }
+        
+        .column-action-btn {
+            padding: 6px 12px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            flex: 1;
+        }
+        
+        .column-action-btn:hover {
+            background: #5568d3;
+        }
+        
+        .column-dropdown-body {
+            padding: 8px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .column-option {
+            padding: 8px 12px;
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+        
+        .column-option:hover {
+            background: #f5f5f5;
+        }
+        
+        .column-option input[type="checkbox"] {
+            margin-right: 10px;
+            cursor: pointer;
+            width: 16px;
+            height: 16px;
+        }
+        
+        .column-option-label {
+            flex: 1;
+            font-size: 14px;
+            color: #333;
+        }
+        
+        .column-option-tooltip {
+            display: inline-block;
+            margin-left: 5px;
+            color: #999;
+            cursor: help;
+            font-size: 12px;
+        }
+        
+        /* Sort indicator colors */
+        th.sorted-desc::after {
+            content: ' ▼';
+            color: #10b981; /* Green for descending (high to low) */
+            font-size: 0.8em;
+        }
+        
+        th.sorted-asc::after {
+            content: ' ▲';
+            color: #f59e0b; /* Orange for ascending (low to high) */
+            font-size: 0.8em;
+        }
+        
+        th.sorted-multi {
+            color: #667eea; /* Purple for multi-column sort */
+        }
     </style>
 
     <!-- Pagination -->
@@ -118,6 +230,11 @@
         </select>
     </div>
 
-    <script src="discovery.js"></script>
+    <!-- Load modular JavaScript files in order -->
+    <script src="discovery-core.js"></script>
+    <script src="discovery-data.js"></script>
+    <script src="discovery-ui.js"></script>
+    <script src="discovery-table.js"></script>
+
 </body>
 </html>
