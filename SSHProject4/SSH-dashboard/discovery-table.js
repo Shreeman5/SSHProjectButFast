@@ -385,11 +385,7 @@ function renderColumnData(item, columnKey) {
     const value = item[columnKey];
     
     // Check if this column is currently being sorted
-    const isSorted = sortColumns.includes(columnKey) || 
-                     (columnKey === 'asn_concentration' && sortColumns.includes('asn_concentration')) ||
-                     (columnKey === 'ip_concentration' && sortColumns.includes('ip_concentration')) ||
-                     (columnKey === 'username_concentration' && sortColumns.includes('username_concentration')) ||
-                     (columnKey === 'trend_sparkline' && sortColumns.includes('trend_sparkline'));
+    const isSorted = sortColumns.includes(columnKey);
     
     const sortedClass = isSorted ? ' sorted-col' : '';
     
@@ -405,6 +401,36 @@ function renderColumnData(item, columnKey) {
         case 'unique_ips':
         case 'unique_usernames':
             return `<td class="number${sortedClass}">${formatNumber(value || 0)}</td>`;
+        
+        // Stability columns (0.000-1.000 with color coding)
+        case 'asn_stability':
+        case 'ip_stability':
+        case 'username_stability':
+            if (value === null || value === undefined) {
+                return `<td class="number${sortedClass}">N/A</td>`;
+            }
+            // Color code: green = stable (>0.7), yellow = moderate (0.3-0.7), red = volatile (<0.3)
+            let stabilityColor = '';
+            if (value >= 0.7) {
+                stabilityColor = ' style="color: #2d7f3f;"'; // Green
+            } else if (value >= 0.3) {
+                stabilityColor = ' style="color: #d4a506;"'; // Yellow/Gold
+            } else {
+                stabilityColor = ' style="color: #c53030;"'; // Red
+            }
+            return `<td class="number${sortedClass}"${stabilityColor}>${value.toFixed(3)}</td>`;
+        
+        // Peak hours column
+        case 'peak_hours':
+            if (!value) {
+                return `<td class="text${sortedClass}">N/A</td>`;
+            }
+            // Value format: "14:00 (25.3%), 15:00 (18.7%), 02:00 (12.1%)"
+            // Wrap in small font and break into multiple lines for readability
+            const formattedHours = value.split(', ').map(hour => {
+                return `<div style="font-size: 0.85em; white-space: nowrap;">${hour}</div>`;
+            }).join('');
+            return `<td class="text${sortedClass}" style="line-height: 1.4;">${formattedHours}</td>`;
         
         // Percentage columns
         case 'max_pct_change':

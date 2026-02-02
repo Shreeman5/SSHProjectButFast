@@ -53,7 +53,7 @@ def register_asn_summary(app):
                     asn_name,
                     SUM(attacks) as total_attacks,
                     AVG(CASE WHEN was_present = 1 THEN attacks ELSE NULL END) as avg_daily,
-                    SUM(was_present) as active_days,
+                    COUNT(DISTINCT CASE WHEN was_present = 1 THEN date ELSE NULL END) as active_days,
                     MIN(CASE WHEN was_present = 1 THEN date ELSE NULL END) as first_seen,
                     MAX(CASE WHEN was_present = 1 THEN date ELSE NULL END) as last_seen,
                     MAX(attacks) as max_daily,

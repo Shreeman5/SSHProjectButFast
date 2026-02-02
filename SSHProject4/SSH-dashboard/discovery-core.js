@@ -43,6 +43,10 @@ const OPTIONAL_COLUMNS = {
         { key: 'unique_asns', label: 'Unique ASNs', tooltip: 'Number of distinct ASN organizations attacking from this country', default: false },
         { key: 'unique_ips', label: 'Unique IPs', tooltip: 'Number of distinct IP addresses from this country', default: false },
         { key: 'unique_usernames', label: 'Unique Usernames', tooltip: 'Number of distinct usernames tried from this country', default: false },
+        { key: 'asn_stability', label: 'ASN Stability', tooltip: 'Mean Jaccard similarity between consecutive days\' ASN sets (0=volatile, 1=stable). Higher = same ASNs attacking consistently.', default: false },
+        { key: 'ip_stability', label: 'IP Stability', tooltip: 'Mean Jaccard similarity between consecutive days\' IP sets (0=volatile, 1=stable). Higher = same IPs attacking consistently.', default: false },
+        { key: 'username_stability', label: 'Username Stability', tooltip: 'Mean Jaccard similarity between consecutive days\' username sets (0=volatile, 1=stable). Higher = same credentials targeted consistently.', default: false },
+        { key: 'peak_hours', label: 'Peak Attack Hours', tooltip: 'Top 3 hours of day with most attacks (hour + percentage of daily total)', default: false },
         { key: 'asn_concentration', label: 'ASN Concentration (Top 3)', tooltip: 'Top 3 ASNs and their attack percentages - sortable by top contributor', default: false },
         { key: 'ip_concentration', label: 'IP Concentration (Top 3)', tooltip: 'Top 3 IPs and their attack percentages - sortable by top contributor', default: false },
         { key: 'username_concentration', label: 'Username Concentration (Top 3)', tooltip: 'Top 3 usernames and their attack percentages - sortable by top contributor', default: false },
@@ -59,7 +63,7 @@ const OPTIONAL_COLUMNS = {
 
 // Load column preferences from localStorage
 function loadColumnPreferences(dimension) {
-    const PREFS_VERSION = 3; // Increment this when you change column structure
+    const PREFS_VERSION = 5; // Increment this when you change column structure
     const versionKey = `${dimension}ColumnPrefsVersion`;
     const savedVersion = localStorage.getItem(versionKey);
     
