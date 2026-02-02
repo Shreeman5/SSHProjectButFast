@@ -47,6 +47,8 @@ const OPTIONAL_COLUMNS = {
         { key: 'ip_stability', label: 'IP Stability', tooltip: 'Mean Jaccard similarity between consecutive days\' IP sets (0=volatile, 1=stable). Higher = same IPs attacking consistently.', default: false },
         { key: 'username_stability', label: 'Username Stability', tooltip: 'Mean Jaccard similarity between consecutive days\' username sets (0=volatile, 1=stable). Higher = same credentials targeted consistently.', default: false },
         { key: 'peak_hours', label: 'Peak Attack Hours', tooltip: 'Top 3 hours of day with most attacks (hour + percentage of daily total)', default: false },
+        { key: 'peak_minutes', label: 'Peak Attack Minutes', tooltip: 'Top 3 minutes with most attacks (HH:MM + percentage)', default: false },
+        { key: 'peak_seconds', label: 'Peak Attack Seconds', tooltip: 'Top 3 seconds with most attacks (HH:MM:SS + percentage)', default: false },
         { key: 'asn_concentration', label: 'ASN Concentration (Top 3)', tooltip: 'Top 3 ASNs and their attack percentages - sortable by top contributor', default: false },
         { key: 'ip_concentration', label: 'IP Concentration (Top 3)', tooltip: 'Top 3 IPs and their attack percentages - sortable by top contributor', default: false },
         { key: 'username_concentration', label: 'Username Concentration (Top 3)', tooltip: 'Top 3 usernames and their attack percentages - sortable by top contributor', default: false },
@@ -63,7 +65,7 @@ const OPTIONAL_COLUMNS = {
 
 // Load column preferences from localStorage
 function loadColumnPreferences(dimension) {
-    const PREFS_VERSION = 5; // Increment this when you change column structure
+    const PREFS_VERSION = 6; // Increment this when you change column structure
     const versionKey = `${dimension}ColumnPrefsVersion`;
     const savedVersion = localStorage.getItem(versionKey);
     

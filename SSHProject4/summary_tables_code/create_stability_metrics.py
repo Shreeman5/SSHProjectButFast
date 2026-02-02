@@ -80,15 +80,47 @@ def compute_stability_for_country(daily_data):
     return (asn_mean, ip_mean, username_mean)
 
 
+def format_time_12h(hour, minute=None, second=None):
+    """
+    Convert 24-hour time to 12-hour format with am/pm
+    Examples:
+    - format_time_12h(14, 15) → "2:15pm"
+    - format_time_12h(0, 35) → "12:35am"
+    - format_time_12h(14, 15, 22) → "2:15:22pm"
+    """
+    # Convert hour to 12-hour format
+    if hour == 0:
+        hour_12 = 12
+        period = "am"
+    elif hour < 12:
+        hour_12 = hour
+        period = "am"
+    elif hour == 12:
+        hour_12 = 12
+        period = "pm"
+    else:
+        hour_12 = hour - 12
+        period = "pm"
+    
+    # Build time string
+    if second is not None:
+        return f"{hour_12}:{minute:02d}:{second:02d}{period}"
+    elif minute is not None:
+        return f"{hour_12}:{minute:02d}{period}"
+    else:
+        return f"{hour_12}{period}"
+
+
 def compute_peak_hours(hourly_attacks):
     """
-    Find top 3 peak hours with percentages
+    Find top 3 peak hours with percentages in 12-hour format
     hourly_attacks: dict of {hour: attack_count}
-    Returns: "14:00 (25.3%), 15:00 (18.7%), 02:00 (12.1%)"
+    Returns: (formatted_string, top_hour_percentage)
+    Example: ("2pm (25.3%), 3pm (18.7%), 2am (12.1%)", 25.3)
     """
     
     if not hourly_attacks:
-        return None
+        return (None, None)
     
     total_attacks = sum(hourly_attacks.values())
     
@@ -98,20 +130,99 @@ def compute_peak_hours(hourly_attacks):
     # Get top 3
     top_3 = sorted_hours[:3]
     
-    # Format as "HH:00 (XX.X%)"
+    # Format as "2pm (XX.X%)" in 12-hour time
     formatted = []
+    percentages = []
+    
     for hour, count in top_3:
         percentage = (count / total_attacks) * 100
-        formatted.append(f"{hour:02d}:00 ({percentage:.1f}%)")
+        percentages.append(percentage)
+        time_str = format_time_12h(hour)
+        formatted.append(f"{time_str} ({percentage:.1f}%)")
     
-    return ", ".join(formatted)
+    formatted_string = ", ".join(formatted)
+    top_percentage = percentages[0] if percentages else None
+    
+    return (formatted_string, top_percentage)
 
 
-def process_partition(conn, partition_path, partition_name, country_data, country_hours):
+def compute_peak_minutes(minute_attacks):
+    """
+    Find top 3 peak minutes with percentages
+    minute_attacks: dict of {(hour, minute): attack_count}
+    Returns: (formatted_string, top_minute_percentage)
+    Example: ("4:15pm (12.3%), 2:32pm (10.1%), 11:47am (8.5%)", 12.3)
+    """
+    
+    if not minute_attacks:
+        return (None, None)
+    
+    total_attacks = sum(minute_attacks.values())
+    
+    # Sort by attack count descending
+    sorted_minutes = sorted(minute_attacks.items(), key=lambda x: x[1], reverse=True)
+    
+    # Get top 3
+    top_3 = sorted_minutes[:3]
+    
+    # Format as "4:15pm (XX.X%)"
+    formatted = []
+    percentages = []
+    
+    for (hour, minute), count in top_3:
+        percentage = (count / total_attacks) * 100
+        percentages.append(percentage)
+        time_str = format_time_12h(hour, minute)
+        formatted.append(f"{time_str} ({percentage:.1f}%)")
+    
+    formatted_string = ", ".join(formatted)
+    top_percentage = percentages[0] if percentages else None
+    
+    return (formatted_string, top_percentage)
+
+
+def compute_peak_seconds(second_attacks):
+    """
+    Find top 3 peak seconds with percentages
+    second_attacks: dict of {(hour, minute, second): attack_count}
+    Returns: (formatted_string, top_second_percentage)
+    Example: ("4:15:22pm (5.2%), 2:32:18pm (4.8%), 11:47:09am (3.1%)", 5.2)
+    """
+    
+    if not second_attacks:
+        return (None, None)
+    
+    total_attacks = sum(second_attacks.values())
+    
+    # Sort by attack count descending
+    sorted_seconds = sorted(second_attacks.items(), key=lambda x: x[1], reverse=True)
+    
+    # Get top 3
+    top_3 = sorted_seconds[:3]
+    
+    # Format as "4:15:22pm (XX.X%)"
+    formatted = []
+    percentages = []
+    
+    for (hour, minute, second), count in top_3:
+        percentage = (count / total_attacks) * 100
+        percentages.append(percentage)
+        time_str = format_time_12h(hour, minute, second)
+        formatted.append(f"{time_str} ({percentage:.1f}%)")
+    
+    formatted_string = ", ".join(formatted)
+    top_percentage = percentages[0] if percentages else None
+    
+    return (formatted_string, top_percentage)
+
+
+def process_partition(conn, partition_path, partition_name, country_data, country_hours, country_minutes, country_seconds):
     """
     Process one partition and accumulate data
     country_data: dict of {country: {date: {'asns': set(), 'ips': set(), 'usernames': set()}}}
     country_hours: dict of {country: {hour: attack_count}}
+    country_minutes: dict of {country: {(hour, minute): attack_count}}
+    country_seconds: dict of {country: {(hour, minute, second): attack_count}}
     """
     
     print(f"📁 Processing: {partition_name}")
@@ -134,7 +245,9 @@ def process_partition(conn, partition_path, partition_name, country_data, countr
             result = conn.execute(f"""
                 SELECT 
                     DATE_TRUNC('day', datetime)::DATE as date,
-                    FLOOR(Time / 10000)::INTEGER as hour,  -- Extract HH from HHMMSS
+                    FLOOR(Time / 10000)::INTEGER as hour,
+                    FLOOR((Time % 10000) / 100)::INTEGER as minute,
+                    (Time % 100)::INTEGER as second,
                     country,
                     asn_name,
                     IP,
@@ -145,7 +258,7 @@ def process_partition(conn, partition_path, partition_name, country_data, countr
             """).fetchall()
             
             # Accumulate data
-            for date, hour, country, asn_name, ip, username in result:
+            for date, hour, minute, second, country, asn_name, ip, username in result:
                 # Initialize country if new
                 if country not in country_data:
                     country_data[country] = defaultdict(lambda: {
@@ -154,6 +267,8 @@ def process_partition(conn, partition_path, partition_name, country_data, countr
                         'usernames': set()
                     })
                     country_hours[country] = defaultdict(int)
+                    country_minutes[country] = defaultdict(int)
+                    country_seconds[country] = defaultdict(int)
                 
                 # Add to daily sets
                 if asn_name and asn_name != 'Unknown':
@@ -166,6 +281,14 @@ def process_partition(conn, partition_path, partition_name, country_data, countr
                 # Add to hourly counts
                 if hour is not None:
                     country_hours[country][hour] += 1
+                
+                # Add to minute counts
+                if hour is not None and minute is not None:
+                    country_minutes[country][(hour, minute)] += 1
+                
+                # Add to second counts
+                if hour is not None and minute is not None and second is not None:
+                    country_seconds[country][(hour, minute, second)] += 1
         
         except Exception as e:
             print(f"   ❌ Error in {parquet_file.name}: {e}")
@@ -204,18 +327,20 @@ def main():
     # Connect to database
     conn = duckdb.connect(DB_PATH)
     
-    print(f"\n📊 Step 1: Collecting daily sets and hourly patterns...")
+    print(f"\n📊 Step 1: Collecting daily sets and time patterns...")
     print("="*70)
     
     # Data structures
     country_data = {}  # {country: {date: {'asns': set(), 'ips': set(), 'usernames': set()}}}
     country_hours = {}  # {country: {hour: attack_count}}
+    country_minutes = {}  # {country: {(hour, minute): attack_count}}
+    country_seconds = {}  # {country: {(hour, minute, second): attack_count}}
     
     start_time = time.time()
     
     # Process each partition
     for partition_path, partition_name, _ in partitions:
-        process_partition(conn, partition_path, str(partition_name), country_data, country_hours)
+        process_partition(conn, partition_path, str(partition_name), country_data, country_hours, country_minutes, country_seconds)
     
     collection_time = time.time() - start_time
     
@@ -235,15 +360,22 @@ def main():
         # Compute stability
         asn_stab, ip_stab, username_stab = compute_stability_for_country(country_data[country])
         
-        # Compute peak hours
-        peak_hours_str = compute_peak_hours(country_hours[country])
+        # Compute peak hours, minutes, seconds
+        peak_hours_str, peak_hour_1_pct = compute_peak_hours(country_hours[country])
+        peak_minutes_str, peak_minute_1_pct = compute_peak_minutes(country_minutes[country])
+        peak_seconds_str, peak_second_1_pct = compute_peak_seconds(country_seconds[country])
         
         stability_data.append({
             'country': country,
             'asn_stability': asn_stab,
             'ip_stability': ip_stab,
             'username_stability': username_stab,
-            'peak_hours': peak_hours_str
+            'peak_hours': peak_hours_str,
+            'peak_hour_1_pct': peak_hour_1_pct,
+            'peak_minutes': peak_minutes_str,
+            'peak_minute_1_pct': peak_minute_1_pct,
+            'peak_seconds': peak_seconds_str,
+            'peak_second_1_pct': peak_second_1_pct
         })
     
     print(f"\n✅ Stability computed for {len(stability_data)} countries")
@@ -259,7 +391,12 @@ def main():
             asn_stability DOUBLE,
             ip_stability DOUBLE,
             username_stability DOUBLE,
-            peak_hours VARCHAR
+            peak_hours VARCHAR,
+            peak_hour_1_pct DOUBLE,
+            peak_minutes VARCHAR,
+            peak_minute_1_pct DOUBLE,
+            peak_seconds VARCHAR,
+            peak_second_1_pct DOUBLE
         )
     """)
     
@@ -267,13 +404,18 @@ def main():
     for data in stability_data:
         conn.execute("""
             INSERT INTO country_stability_metrics 
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, [
             data['country'],
             data['asn_stability'],
             data['ip_stability'],
             data['username_stability'],
-            data['peak_hours']
+            data['peak_hours'],
+            data['peak_hour_1_pct'],
+            data['peak_minutes'],
+            data['peak_minute_1_pct'],
+            data['peak_seconds'],
+            data['peak_second_1_pct']
         ])
     
     total_time = time.time() - start_time

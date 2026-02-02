@@ -420,17 +420,21 @@ function renderColumnData(item, columnKey) {
             }
             return `<td class="number${sortedClass}"${stabilityColor}>${value.toFixed(3)}</td>`;
         
-        // Peak hours column
+        // Peak hours/minutes/seconds columns
         case 'peak_hours':
+        case 'peak_minutes':
+        case 'peak_seconds':
             if (!value) {
                 return `<td class="text${sortedClass}">N/A</td>`;
             }
-            // Value format: "14:00 (25.3%), 15:00 (18.7%), 02:00 (12.1%)"
+            // Value format: "2pm (25.3%), 3pm (18.7%), 2am (12.1%)"
+            // Or: "4:15pm (12.3%), 2:32pm (10.1%), 11:47am (8.5%)"
+            // Or: "4:15:22pm (5.2%), 2:32:18pm (4.8%), 11:47:09am (3.1%)"
             // Wrap in small font and break into multiple lines for readability
-            const formattedHours = value.split(', ').map(hour => {
-                return `<div style="font-size: 0.85em; white-space: nowrap;">${hour}</div>`;
+            const formattedTimes = value.split(', ').map(time => {
+                return `<div style="font-size: 0.85em; white-space: nowrap;">${time}</div>`;
             }).join('');
-            return `<td class="text${sortedClass}" style="line-height: 1.4;">${formattedHours}</td>`;
+            return `<td class="text${sortedClass}" style="line-height: 1.4;">${formattedTimes}</td>`;
         
         // Percentage columns
         case 'max_pct_change':

@@ -335,7 +335,10 @@ function sortData() {
             'asn_concentration': 'asn_top1_pct',
             'ip_concentration': 'ip_top1_pct',
             'username_concentration': 'username_top1_pct',
-            'trend_sparkline': 'sparkline_values'
+            'trend_sparkline': 'sparkline_values',
+            'peak_hours': 'peak_hour_1_pct',
+            'peak_minutes': 'peak_minute_1_pct',
+            'peak_seconds': 'peak_second_1_pct'
         };
         return concentrationMap[column] || column;
     };

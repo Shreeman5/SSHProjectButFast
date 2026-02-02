@@ -276,7 +276,12 @@ def register_country_summary(app):
                 sm.asn_stability,
                 sm.ip_stability,
                 sm.username_stability,
-                sm.peak_hours
+                sm.peak_hours,
+                sm.peak_hour_1_pct,
+                sm.peak_minutes,
+                sm.peak_minute_1_pct,
+                sm.peak_seconds,
+                sm.peak_second_1_pct
             FROM country_stats cs
             CROSS JOIN total_days td
             LEFT JOIN volatility_metrics vm ON cs.country = vm.country
@@ -330,7 +335,12 @@ def register_country_summary(app):
             'asn_stability': round(row[29], 3) if row[29] is not None else None,
             'ip_stability': round(row[30], 3) if row[30] is not None else None,
             'username_stability': round(row[31], 3) if row[31] is not None else None,
-            'peak_hours': row[32]
+            'peak_hours': row[32],
+            'peak_hour_1_pct': round(row[33], 1) if row[33] is not None else None,
+            'peak_minutes': row[34],
+            'peak_minute_1_pct': round(row[35], 1) if row[35] is not None else None,
+            'peak_seconds': row[36],
+            'peak_second_1_pct': round(row[37], 1) if row[37] is not None else None
         } for row in result]
         
         return jsonify(data)
