@@ -67,7 +67,8 @@ function renderTable() {
             const isSelected = selectedASNs.has(item.asn_name);
             const isDisabled = !isSelected && selectedASNs.size >= MAX_SELECTED;
             
-            return `
+            // Build row HTML dynamically based on visible columns (SAME AS COUNTRY!)
+            let rowHTML = `
                 <tr>
                     <td style="text-align: center;">
                         <input type="checkbox" 
@@ -78,18 +79,20 @@ function renderTable() {
                                style="cursor: ${isDisabled && !isSelected ? 'not-allowed' : 'pointer'}; width: 16px; height: 16px;">
                     </td>
                     <td>${rank}</td>
-                    <td><strong>${entityName}</strong></td>
-                    <td class="number">${formatNumber(item.total_attacks)}</td>
-                    <td class="number">${formatNumber(item.avg_daily)}</td>
-                    <td class="number">${formatPercentage(item.persistence_pct || 0)} ${item.active_days ? `(${item.active_days}d)` : ''}</td>
-                    <td class="number">${formatNumber(item.max_absolute_change || 0)}</td>
-                    <td class="number">${formatPercentage(item.max_pct_change || 0)}</td>
-                    <td class="number">${formatNumber(item.recent_attacks || 0)}</td>
-                    <td>${formatDate(item.first_seen)}</td>
-                    <td>${formatDate(item.last_seen)}</td>
-                    <td class="number">${formatNumber(item.max_daily || 0)}</td>
-                </tr>
-            `;
+                    <td><strong>${entityName}</strong></td>`;
+            
+            // Add all visible columns dynamically
+            const prefs = columnPreferences[currentDimension];
+            const availableCols = OPTIONAL_COLUMNS[currentDimension] || [];
+            
+            availableCols.forEach(col => {
+                if (prefs[col.key]) {
+                    rowHTML += renderColumnData(item, col.key);
+                }
+            });
+            
+            rowHTML += `</tr>`;
+            return rowHTML;
         } else {
             return `
                 <tr>
@@ -129,7 +132,7 @@ function renderTable() {
     }
 }
 
-// Render header (continued in next part due to size)
+// Render header
 function renderHeader() {
     const header = document.getElementById('table-header');
     
@@ -174,20 +177,27 @@ function renderHeader() {
             return `<th class="${sortClass}" onclick="sortByColumn('${col.key}', event)" style="cursor: pointer; user-select: none;" title="${col.tooltip}">${col.label}${indicator}</th>`;
         }).join('');
     } else if (currentDimension === 'asn') {
+        // Start with fixed columns (checkbox, rank, ASN name) - MAKE DYNAMIC LIKE COUNTRY!
         const columns = [
             { label: '', key: null, tooltip: 'Select for analysis', sortable: false, isCheckbox: true },
             { label: 'Rank', key: null, tooltip: 'Position in sorted list', sortable: false },
-            { label: 'ASN', key: 'asn_name', tooltip: 'ASN organization name', sortable: false },
-            { label: 'Total Attacks', key: 'total_attacks', tooltip: 'Total attacks', sortable: true },
-            { label: 'Avg Daily', key: 'avg_daily', tooltip: 'Average per day', sortable: true },
-            { label: 'Persistence', key: 'persistence_pct', tooltip: 'Percentage of days active', sortable: true },
-            { label: 'Max Absolute Δ', key: 'max_absolute_change', tooltip: 'Largest increase', sortable: true },
-            { label: 'Max % Δ', key: 'max_pct_change', tooltip: 'Largest % increase', sortable: true },
-            { label: 'Recent (7d)', key: 'recent_attacks', tooltip: 'Last 7 days', sortable: true },
-            { label: 'First Seen', key: 'first_seen', tooltip: 'First date', sortable: true },
-            { label: 'Last Seen', key: 'last_seen', tooltip: 'Last date', sortable: true },
-            { label: 'Max Daily', key: 'max_daily', tooltip: 'Highest daily', sortable: true }
+            { label: 'ASN', key: 'asn_name', tooltip: 'ASN organization name', sortable: false }
         ];
+        
+        // Add columns based on user preferences (DYNAMIC!)
+        const prefs = columnPreferences[currentDimension];
+        const availableCols = OPTIONAL_COLUMNS[currentDimension] || [];
+        
+        availableCols.forEach(col => {
+            if (prefs[col.key]) {
+                columns.push({
+                    label: col.label,
+                    key: col.key,
+                    tooltip: col.tooltip,
+                    sortable: true
+                });
+            }
+        });
         
         header.innerHTML = columns.map(col => {
             if (col.isCheckbox) {
@@ -400,12 +410,18 @@ function renderColumnData(item, columnKey) {
         case 'unique_asns':
         case 'unique_ips':
         case 'unique_usernames':
+        case 'unique_countries':  // NEW for ASN
             return `<td class="number${sortedClass}">${formatNumber(value || 0)}</td>`;
+        
+        // Primary country (text, ASN-specific)
+        case 'primary_country':
+            return `<td class="text${sortedClass}">${value || 'N/A'}</td>`;
         
         // Stability columns (0.000-1.000 with color coding)
         case 'asn_stability':
         case 'ip_stability':
         case 'username_stability':
+        case 'country_stability':  // NEW for ASN
             if (value === null || value === undefined) {
                 return `<td class="number${sortedClass}">N/A</td>`;
             }
@@ -463,11 +479,12 @@ function renderColumnData(item, columnKey) {
             
             return `<td class="${sortedClass.trim()}" style="font-size: 11px; line-height: 1.4;">${asnFormatted}</td>`;
         
+        case 'country_concentration':  // NEW for ASN
         case 'ip_concentration':
         case 'username_concentration':
             if (!value) return `<td class="${sortedClass.trim()}" style="text-align: center;">-</td>`;
             
-            // IPs and usernames use standard comma delimiter
+            // Countries, IPs and usernames use standard comma delimiter
             const items = value.split(', ');
             const formatted = items.map((item, idx) => {
                 const rank = idx + 1;
@@ -520,12 +537,11 @@ function renderColumnData(item, columnKey) {
             
             return `<td class="${sortedClass.trim()}" style="padding: 4px;">${svg}</td>`;
         
-        
-        
         // Rotation rates (decimal)
         case 'ip_rotation':
         case 'asn_rotation':
         case 'username_rotation':
+        case 'country_rotation':  // NEW for ASN
             return `<td class="number${sortedClass}">${typeof value === 'number' ? value.toFixed(1) : '-'}</td>`;
         
         // Burst intensity (ratio)
