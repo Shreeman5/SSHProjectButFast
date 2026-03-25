@@ -120,12 +120,45 @@ const OPTIONAL_COLUMNS = {
         { key: 'trend_sparkline', label: 'Trend (7-day)', tooltip: 'Mini chart showing attacks at 7-day intervals', default: false },
         { key: 'burst_intensity', label: 'Burst Intensity', tooltip: 'Ratio of max daily attacks to average daily (higher = more bursty)', default: false }
     ],
-    username: []  // No optional columns for username
+    username: [
+        // Default columns (visible by default)
+        { key: 'total_attacks', label: 'Total Attacks', tooltip: 'Total attacks across all 69 days', default: true },
+        { key: 'avg_daily', label: 'Avg Daily', tooltip: 'Average attacks per day', default: true },
+        { key: 'persistence_pct', label: 'Persistence', tooltip: 'Percentage of days active', default: true },
+        { key: 'max_absolute_change', label: 'Max Absolute Δ', tooltip: 'Largest day-to-day increase', default: true },
+        { key: 'max_pct_change', label: 'Max % Δ', tooltip: 'Largest percentage increase', default: true },
+        { key: 'recent_attacks', label: 'Recent (7d)', tooltip: 'Attacks in last 7 days', default: true },
+        { key: 'first_seen', label: 'First Seen', tooltip: 'First appearance date', default: true },
+        { key: 'last_seen', label: 'Last Seen', tooltip: 'Last appearance date', default: true },
+        { key: 'max_daily', label: 'Max Daily', tooltip: 'Highest single-day count', default: true },
+        
+        // Attribution columns (6)
+        { key: 'unique_countries', label: 'Unique Countries', tooltip: 'Number of countries attacking with this username', default: false },
+        { key: 'unique_asns', label: 'Unique ASNs', tooltip: 'Number of ASN organizations attacking with this username', default: false },
+        { key: 'unique_ips', label: 'Unique IPs', tooltip: 'Number of distinct IPs attacking with this username', default: false },
+        { key: 'country_concentration', label: 'Country Concentration (Top 3)', tooltip: 'Top 3 countries and their attack percentages', default: false },
+        { key: 'asn_concentration', label: 'ASN Concentration (Top 3)', tooltip: 'Top 3 ASNs and their attack percentages', default: false },
+        { key: 'ip_concentration', label: 'IP Concentration (Top 3)', tooltip: 'Top 3 IPs and their attack percentages', default: false },
+        
+        // Stability columns (3)
+        { key: 'country_stability', label: 'Country Stability', tooltip: 'Mean Jaccard similarity between consecutive days\' country sets (0=volatile, 1=stable)', default: false },
+        { key: 'asn_stability', label: 'ASN Stability', tooltip: 'Mean Jaccard similarity between consecutive days\' ASN sets (0=volatile, 1=stable)', default: false },
+        { key: 'ip_stability', label: 'IP Stability', tooltip: 'Mean Jaccard similarity between consecutive days\' IP sets (0=volatile, 1=stable)', default: false },
+        
+        // Rotation columns (3)
+        { key: 'country_rotation', label: 'Country Rotation Rate', tooltip: 'Average number of countries attacking per active day', default: false },
+        { key: 'asn_rotation', label: 'ASN Rotation Rate', tooltip: 'Average number of ASNs attacking per active day', default: false },
+        { key: 'ip_rotation', label: 'IP Rotation Rate', tooltip: 'Average number of IPs attacking per active day', default: false },
+        
+        // Characteristics (2)
+        { key: 'trend_sparkline', label: 'Trend (7-day)', tooltip: 'Mini chart showing attacks at 7-day intervals', default: false },
+        { key: 'burst_intensity', label: 'Burst Intensity', tooltip: 'Ratio of max daily attacks to average daily (higher = more bursty)', default: false }
+    ]
 };
 
 // Load column preferences from localStorage
 function loadColumnPreferences(dimension) {
-    const PREFS_VERSION = 8; // Increment this when you change column structure
+    const PREFS_VERSION = 9; // Increment this when you change column structure
     const versionKey = `${dimension}ColumnPrefsVersion`;
     const savedVersion = localStorage.getItem(versionKey);
     

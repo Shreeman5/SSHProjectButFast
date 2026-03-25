@@ -1,6 +1,6 @@
 """
 Username Summary Endpoint
-Returns comprehensive data for all usernames with discovery metrics
+Returns comprehensive data for all usernames with discovery metrics + stability metrics
 OPTIMIZED: Only processes the usernames that will be returned
 """
 
@@ -131,6 +131,27 @@ def register_username_summary(app):
                 WHERE date BETWEEN (DATE '{end}' - INTERVAL 6 DAY) AND DATE '{end}'
                   AND username IN ({placeholders})
                 GROUP BY username
+            ),
+            sparkline_data AS (
+                -- Get attack counts at 7-day intervals for sparkline
+                SELECT 
+                    username,
+                    STRING_AGG(
+                        CAST(total_attacks AS VARCHAR),
+                        ','
+                        ORDER BY week_num
+                    ) as sparkline_values
+                FROM (
+                    SELECT 
+                        username,
+                        FLOOR((date - DATE '{start}') / 7) as week_num,
+                        SUM(attacks) as total_attacks
+                    FROM daily_username_attacks
+                    WHERE date BETWEEN '{start}' AND '{end}'
+                      AND username IN ({placeholders})
+                    GROUP BY username, week_num
+                ) intervals
+                GROUP BY username
             )
             SELECT 
                 s.username,
@@ -144,15 +165,37 @@ def register_username_summary(app):
                 ROUND((s.active_days::FLOAT / 69.0) * 100, 1) as persistence_pct,
                 COALESCE(l7.recent_attacks, 0) as recent_attacks,
                 s.active_days,
-                s.country_count
+                s.country_count,
+                CASE WHEN s.avg_daily > 0 THEN ROUND(s.max_daily::FLOAT / s.avg_daily, 1) ELSE 0 END as burst_intensity,
+                sd.sparkline_values,
+                
+                -- Stability metrics from username_stability_metrics table
+                sm.unique_countries,
+                sm.unique_asns,
+                sm.unique_ips,
+                sm.country_concentration,
+                sm.country_top1_pct,
+                sm.asn_concentration,
+                sm.asn_top1_pct,
+                sm.ip_concentration,
+                sm.ip_top1_pct,
+                sm.country_stability,
+                sm.asn_stability,
+                sm.ip_stability,
+                sm.country_rotation,
+                sm.asn_rotation,
+                sm.ip_rotation
+                
             FROM username_stats s
             LEFT JOIN volatility_metrics vm ON s.username = vm.username
             LEFT JOIN last_7_days l7 ON s.username = l7.username
+            LEFT JOIN sparkline_data sd ON s.username = sd.username
+            LEFT JOIN username_stability_metrics sm ON s.username = sm.username
             ORDER BY s.total_attacks DESC
         """
         
-        # Execute with parameters (repeat usernames for each IN clause)
-        params = usernames + usernames + usernames  # 3 IN clauses
+        # Execute with parameters (repeat usernames for each IN clause - now 4 times)
+        params = usernames + usernames + usernames + usernames  # 4 IN clauses
         result = conn.execute(stats_query, params).fetchall()
         conn.close()
         
@@ -171,7 +214,26 @@ def register_username_summary(app):
             'persistence_pct': row[8],
             'recent_attacks': row[9],
             'active_days': row[10],
-            'countries': row[11]
+            'countries': row[11],
+            'burst_intensity': row[12],
+            'sparkline_values': row[13],
+            
+            # Stability metrics (14 new fields)
+            'unique_countries': row[14],
+            'unique_asns': row[15],
+            'unique_ips': row[16],
+            'country_concentration': row[17],
+            'country_top1_pct': round(row[18], 1) if row[18] is not None else None,
+            'asn_concentration': row[19],
+            'asn_top1_pct': round(row[20], 1) if row[20] is not None else None,
+            'ip_concentration': row[21],
+            'ip_top1_pct': round(row[22], 1) if row[22] is not None else None,
+            'country_stability': round(row[23], 3) if row[23] is not None else None,
+            'asn_stability': round(row[24], 3) if row[24] is not None else None,
+            'ip_stability': round(row[25], 3) if row[25] is not None else None,
+            'country_rotation': round(row[26], 1) if row[26] is not None else None,
+            'asn_rotation': round(row[27], 1) if row[27] is not None else None,
+            'ip_rotation': round(row[28], 1) if row[28] is not None else None
         } for row in result]
         
         return jsonify(data)
