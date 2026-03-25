@@ -94,21 +94,24 @@ function renderTable() {
             rowHTML += `</tr>`;
             return rowHTML;
         } else {
-            return `
+            // IP and Username dimensions - dynamic rendering
+            let rowHTML = `
                 <tr>
                     <td>${rank}</td>
-                    <td><strong>${entityName}</strong></td>
-                    <td class="number">${formatNumber(item.total_attacks)}</td>
-                    <td class="number">${formatNumber(item.avg_daily)}</td>
-                    <td class="number">${formatPercentage(item.persistence_pct || 0)} ${item.active_days ? `(${item.active_days}d)` : ''}</td>
-                    <td class="number">${formatNumber(item.max_absolute_change || 0)}</td>
-                    <td class="number">${formatPercentage(item.max_pct_change || 0)}</td>
-                    <td class="number">${formatNumber(item.recent_attacks || 0)}</td>
-                    <td>${formatDate(item.first_seen)}</td>
-                    <td>${formatDate(item.last_seen)}</td>
-                    <td class="number">${formatNumber(item.max_daily || 0)}</td>
-                </tr>
-            `;
+                    <td><strong>${entityName}</strong></td>`;
+            
+            // Add all visible columns dynamically
+            const prefs = columnPreferences[currentDimension];
+            const availableCols = OPTIONAL_COLUMNS[currentDimension] || [];
+            
+            availableCols.forEach(col => {
+                if (prefs[col.key]) {
+                    rowHTML += renderColumnData(item, col.key);
+                }
+            });
+            
+            rowHTML += `</tr>`;
+            return rowHTML;
         }
     }).join('');
     
@@ -217,19 +220,26 @@ function renderHeader() {
             return `<th class="${sortClass}" onclick="sortByColumn('${col.key}', event)" style="cursor: pointer; user-select: none;" title="${col.tooltip}">${col.label}${indicator}</th>`;
         }).join('');
     } else {
+        // IP and Username dimensions - dynamic headers
         const columns = [
             { label: 'Rank', key: null, tooltip: 'Position', sortable: false },
-            { label: getDimensionLabel(), key: getDimensionKey(), tooltip: `The ${currentDimension}`, sortable: false },
-            { label: 'Total Attacks', key: 'total_attacks', tooltip: 'Total', sortable: true },
-            { label: 'Avg Daily', key: 'avg_daily', tooltip: 'Average', sortable: true },
-            { label: 'Persistence', key: 'persistence_pct', tooltip: '% of days', sortable: true },
-            { label: 'Max Absolute Δ', key: 'max_absolute_change', tooltip: 'Max increase', sortable: true },
-            { label: 'Max % Δ', key: 'max_pct_change', tooltip: 'Max %', sortable: true },
-            { label: 'Recent (7d)', key: 'recent_attacks', tooltip: 'Last 7d', sortable: true },
-            { label: 'First Seen', key: 'first_seen', tooltip: 'First', sortable: true },
-            { label: 'Last Seen', key: 'last_seen', tooltip: 'Last', sortable: true },
-            { label: 'Max Daily', key: 'max_daily', tooltip: 'Max', sortable: true }
+            { label: getDimensionLabel(), key: getDimensionKey(), tooltip: `The ${currentDimension}`, sortable: false }
         ];
+        
+        // Add columns based on user preferences
+        const prefs = columnPreferences[currentDimension];
+        const availableCols = OPTIONAL_COLUMNS[currentDimension] || [];
+        
+        availableCols.forEach(col => {
+            if (prefs[col.key]) {
+                columns.push({
+                    label: col.label,
+                    key: col.key,
+                    tooltip: col.tooltip,
+                    sortable: true
+                });
+            }
+        });
         
         header.innerHTML = columns.map(col => {
             if (!col.sortable) {
@@ -415,7 +425,12 @@ function renderColumnData(item, columnKey) {
         
         // Primary country (text, ASN-specific)
         case 'primary_country':
+        case 'country':  // For IP dimension
             return `<td class="text${sortedClass}">${value || 'N/A'}</td>`;
+        
+        // ASN name (text, for IP dimension)
+        case 'asn_name':
+            return `<td class="text${sortedClass}" style="font-size: 11px;">${truncate(value || 'N/A', 40)}</td>`;
         
         // Stability columns (0.000-1.000 with color coding)
         case 'asn_stability':

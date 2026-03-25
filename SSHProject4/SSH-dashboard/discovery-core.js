@@ -94,13 +94,38 @@ const OPTIONAL_COLUMNS = {
         { key: 'trend_sparkline', label: 'Trend (7-day)', tooltip: 'Mini chart showing attacks at 7-day intervals', default: false },
         { key: 'burst_intensity', label: 'Burst Intensity', tooltip: 'Ratio of max daily attacks to average daily (higher = more bursty)', default: false }
     ],
-    ip: [],   // No optional columns for IP
+    ip: [
+        // Default columns (visible by default)
+        { key: 'total_attacks', label: 'Total Attacks', tooltip: 'Total attacks across all 69 days', default: true },
+        { key: 'avg_daily', label: 'Avg Daily', tooltip: 'Average attacks per day', default: true },
+        { key: 'persistence_pct', label: 'Persistence', tooltip: 'Percentage of days active', default: true },
+        { key: 'max_absolute_change', label: 'Max Absolute Δ', tooltip: 'Largest day-to-day increase', default: true },
+        { key: 'max_pct_change', label: 'Max % Δ', tooltip: 'Largest percentage increase', default: true },
+        { key: 'recent_attacks', label: 'Recent (7d)', tooltip: 'Attacks in last 7 days', default: true },
+        { key: 'first_seen', label: 'First Seen', tooltip: 'First appearance date', default: true },
+        { key: 'last_seen', label: 'Last Seen', tooltip: 'Last appearance date', default: true },
+        { key: 'max_daily', label: 'Max Daily', tooltip: 'Highest single-day count', default: true },
+        
+        // Attribution columns (2)
+        { key: 'asn_name', label: 'ASN Name', tooltip: 'Organization that owns this IP address', default: false },
+        { key: 'country', label: 'Country', tooltip: 'Geographic location of this IP', default: false },
+        
+        // Targeting columns (4)
+        { key: 'unique_usernames', label: 'Unique Usernames', tooltip: 'Number of distinct usernames tried by this IP', default: false },
+        { key: 'username_concentration', label: 'Username Concentration (Top 3)', tooltip: 'Top 3 usernames and their attack percentages', default: false },
+        { key: 'username_rotation', label: 'Username Rotation Rate', tooltip: 'Average number of unique usernames tried per active day', default: false },
+        { key: 'username_stability', label: 'Username Stability', tooltip: 'Mean Jaccard similarity between consecutive days\' username sets (0=volatile, 1=stable)', default: false },
+        
+        // Attack characteristics (2)
+        { key: 'trend_sparkline', label: 'Trend (7-day)', tooltip: 'Mini chart showing attacks at 7-day intervals', default: false },
+        { key: 'burst_intensity', label: 'Burst Intensity', tooltip: 'Ratio of max daily attacks to average daily (higher = more bursty)', default: false }
+    ],
     username: []  // No optional columns for username
 };
 
 // Load column preferences from localStorage
 function loadColumnPreferences(dimension) {
-    const PREFS_VERSION = 7; // Increment this when you change column structure
+    const PREFS_VERSION = 8; // Increment this when you change column structure
     const versionKey = `${dimension}ColumnPrefsVersion`;
     const savedVersion = localStorage.getItem(versionKey);
     

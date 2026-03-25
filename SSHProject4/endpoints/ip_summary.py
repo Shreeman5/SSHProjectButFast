@@ -1,6 +1,6 @@
 """
 IP Summary Endpoint - OPTIMIZED
-Returns comprehensive data for all IPs with discovery metrics
+Returns comprehensive data for all IPs with discovery metrics + stability metrics
 Uses simpler aggregation without complete grid for better performance
 """
 
@@ -108,6 +108,27 @@ def register_ip_summary(app):
                 WHERE date BETWEEN (DATE '{end}' - INTERVAL 6 DAY) AND DATE '{end}'
                   AND IP IN ({placeholders})
                 GROUP BY IP
+            ),
+            sparkline_data AS (
+                -- Get attack counts at 7-day intervals for sparkline
+                SELECT 
+                    IP,
+                    STRING_AGG(
+                        CAST(total_attacks AS VARCHAR),
+                        ','
+                        ORDER BY week_num
+                    ) as sparkline_values
+                FROM (
+                    SELECT 
+                        IP,
+                        FLOOR((date - DATE '{start}') / 7) as week_num,
+                        SUM(attacks) as total_attacks
+                    FROM daily_ip_attacks
+                    WHERE date BETWEEN '{start}' AND '{end}'
+                      AND IP IN ({placeholders})
+                    GROUP BY IP, week_num
+                ) intervals
+                GROUP BY IP
             )
             SELECT 
                 s.IP,
@@ -122,15 +143,27 @@ def register_ip_summary(app):
                 COALESCE(l7.recent_attacks, 0) as recent_attacks,
                 s.active_days,
                 s.most_common_country as country,
-                s.most_common_asn as asn_name
+                s.most_common_asn as asn_name,
+                CASE WHEN s.avg_daily > 0 THEN ROUND(s.max_daily::FLOAT / s.avg_daily, 1) ELSE 0 END as burst_intensity,
+                sd.sparkline_values,
+                
+                -- Stability metrics from ip_stability_metrics table
+                sm.unique_usernames,
+                sm.username_concentration,
+                sm.username_top1_pct,
+                sm.username_rotation,
+                sm.username_stability
+                
             FROM ip_stats s
             LEFT JOIN volatility_metrics vm ON s.IP = vm.IP
             LEFT JOIN last_7_days l7 ON s.IP = l7.IP
+            LEFT JOIN sparkline_data sd ON s.IP = sd.IP
+            LEFT JOIN ip_stability_metrics sm ON s.IP = sm.ip
             ORDER BY s.total_attacks DESC
         """
         
-        # Execute with parameters (repeat IPs for each IN clause)
-        params = ips + ips + ips  # 3 IN clauses
+        # Execute with parameters (repeat IPs for each IN clause - now 4 times)
+        params = ips + ips + ips + ips  # 4 IN clauses now (added sparkline_data)
         result = conn.execute(stats_query, params).fetchall()
         conn.close()
         
@@ -147,7 +180,16 @@ def register_ip_summary(app):
             'recent_attacks': row[9],
             'active_days': row[10],
             'country': row[11],
-            'asn_name': row[12]
+            'asn_name': row[12],
+            'burst_intensity': row[13],
+            'sparkline_values': row[14],
+            
+            # Stability metrics (5 new fields)
+            'unique_usernames': row[15],
+            'username_concentration': row[16],
+            'username_top1_pct': round(row[17], 1) if row[17] is not None else None,
+            'username_rotation': round(row[18], 1) if row[18] is not None else None,
+            'username_stability': round(row[19], 3) if row[19] is not None else None
         } for row in result]
         
         return jsonify(data)
