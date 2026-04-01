@@ -211,6 +211,17 @@ function switchDimension(dimension) {
         dropdown.style.display = 'none';
     }
     
+    // Show/hide similar IPs search (only for IP dimension)
+    const similarSearch = document.getElementById('similar-ips-search');
+    if (similarSearch) {
+        similarSearch.style.display = (dimension === 'ip') ? 'block' : 'none';
+        
+        // Clear search when switching away from IP
+        if (dimension !== 'ip') {
+            clearSimilarSearch();
+        }
+    }
+    
     // Load data for new dimension
     loadData();
     renderHeader();

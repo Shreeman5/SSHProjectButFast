@@ -87,6 +87,39 @@
         </div>
     </div>
 
+    <!-- Similar IPs Search (only visible for IP dimension) -->
+    <div id="similar-ips-search" style="display: none; margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #dee2e6;">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+            <label style="font-weight: 600; min-width: 120px;">🔍 Find Similar IPs:</label>
+            <input 
+                type="text" 
+                id="similar-ip-input" 
+                placeholder="Enter IP address (e.g., 128.110.156.4)"
+                style="flex: 1; padding: 8px 12px; border: 1px solid #ced4da; border-radius: 4px; font-family: monospace;">
+            <button 
+                id="find-similar-btn"
+                onclick="findSimilarIPs()"
+                style="padding: 8px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500;">
+                Search
+            </button>
+            <button 
+                id="clear-similar-btn"
+                onclick="clearSimilarSearch()"
+                style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; display: none;">
+                Clear
+            </button>
+        </div>
+        
+        <!-- Results container -->
+        <div id="similar-results" style="display: none;">
+            <div id="cluster-info" style="margin-top: 15px; padding: 12px; background: white; border-radius: 4px; border-left: 4px solid #007bff;"></div>
+            <div id="similar-ips-list" style="margin-top: 15px;"></div>
+        </div>
+        
+        <!-- Error message -->
+        <div id="similar-error" style="display: none; margin-top: 10px; padding: 12px; background: #f8d7da; color: #721c24; border-radius: 4px;"></div>
+    </div>
+
     <!-- Data Table -->
     <div class="table-container">
         <table id="data-table">
@@ -256,6 +289,164 @@
     <script src="discovery-data.js"></script>
     <script src="discovery-ui.js"></script>
     <script src="discovery-table.js"></script>
+    
+    <!-- Similar IPs Search Functionality -->
+    <script>
+    // Similar IPs Search Functions
+    
+    async function findSimilarIPs() {
+        const input = document.getElementById('similar-ip-input');
+        const targetIP = input.value.trim();
+        
+        if (!targetIP) {
+            showSimilarError('Please enter an IP address');
+            return;
+        }
+        
+        // Hide previous results
+        document.getElementById('similar-results').style.display = 'none';
+        document.getElementById('similar-error').style.display = 'none';
+        
+        // Show loading state
+        const btn = document.getElementById('find-similar-btn');
+        btn.textContent = 'Searching...';
+        btn.disabled = true;
+        
+        try {
+            const response = await fetch(`${API_BASE}/api/find_similar_ips?ip=${encodeURIComponent(targetIP)}&limit=20`);
+            
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Failed to find similar IPs');
+            }
+            
+            const data = await response.json();
+            displaySimilarResults(data);
+            
+            // Show clear button
+            document.getElementById('clear-similar-btn').style.display = 'inline-block';
+            
+        } catch (error) {
+            console.error('Error finding similar IPs:', error);
+            showSimilarError(error.message);
+        } finally {
+            btn.textContent = 'Search';
+            btn.disabled = false;
+        }
+    }
+    
+    function getReasonTooltip(reason) {
+        // Map reason patterns to explanatory tooltips
+        if (reason === 'Same region') {
+            return 'Both IPs are from the same country';
+        } else if (reason.startsWith('Same ASN')) {
+            return 'Both IPs belong to the same network/organization';
+        } else if (reason.startsWith('High volume')) {
+            return 'Both IPs have similar high attack volumes (>1M attacks)';
+        } else if (reason === 'Focused targeting') {
+            return 'Both IPs target the same usernames consistently (username_stability > 70%)';
+        } else if (reason === 'Exploratory targeting') {
+            return 'Both IPs try many different usernames (username_stability < 30%)';
+        } else if (reason.startsWith('Persistent')) {
+            return 'Both IPs are active on most days (>80% of the time period)';
+        }
+        return reason; // Fallback
+    }
+    
+    function displaySimilarResults(data) {
+        const resultsDiv = document.getElementById('similar-results');
+        const clusterDiv = document.getElementById('cluster-info');
+        const listDiv = document.getElementById('similar-ips-list');
+        
+        // Show cluster profile
+        clusterDiv.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <strong style="font-size: 16px;">${data.cluster.profile_name}</strong>
+                    <div style="color: #6c757d; font-size: 14px; margin-top: 4px;">${data.cluster.profile_description}</div>
+                </div>
+                <div style="text-align: right;">
+                    <div style="font-size: 14px; color: #6c757d;">Cluster ${data.cluster.cluster_id}</div>
+                    <div style="font-size: 14px; color: #6c757d;">${data.cluster.cluster_size.toLocaleString()} IPs in this pattern</div>
+                </div>
+            </div>
+        `;
+        
+        // Show similar IPs
+        if (data.similar_ips.length === 0) {
+            listDiv.innerHTML = '<div style="padding: 20px; text-align: center; color: #6c757d;">No similar IPs found in this cluster.</div>';
+        } else {
+            const tableHTML = `
+                <div style="background: white; border-radius: 4px; overflow: hidden; border: 1px solid #dee2e6;">
+                    <div style="padding: 12px; background: #f8f9fa; border-bottom: 1px solid #dee2e6; font-weight: 600;">
+                        Found ${data.similar_ips.length} Similar IPs (showing top 20)
+                    </div>
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <thead style="background: #f8f9fa;">
+                            <tr>
+                                <th style="padding: 10px; text-align: left; border-bottom: 2px solid #dee2e6;">Rank</th>
+                                <th style="padding: 10px; text-align: left; border-bottom: 2px solid #dee2e6;">IP Address</th>
+                                <th style="padding: 10px; text-align: center; border-bottom: 2px solid #dee2e6;">Similarity</th>
+                                <th style="padding: 10px; text-align: right; border-bottom: 2px solid #dee2e6;">Total Attacks</th>
+                                <th style="padding: 10px; text-align: left; border-bottom: 2px solid #dee2e6;">Country</th>
+                                <th style="padding: 10px; text-align: left; border-bottom: 2px solid #dee2e6;">Why Similar?</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${data.similar_ips.map((ip, idx) => `
+                                <tr style="border-bottom: 1px solid #dee2e6; ${idx % 2 === 0 ? 'background: #f8f9fa;' : ''}">
+                                    <td style="padding: 10px;">${idx + 1}</td>
+                                    <td style="padding: 10px; font-family: monospace; font-weight: 500;">${ip.ip}</td>
+                                    <td style="padding: 10px; text-align: center;">
+                                        <span style="display: inline-block; padding: 4px 8px; background: ${getSimilarityColor(ip.similarity)}; color: white; border-radius: 4px; font-weight: 600;">
+                                            ${ip.similarity}%
+                                        </span>
+                                    </td>
+                                    <td style="padding: 10px; text-align: right;">${formatNumber(ip.total_attacks)}</td>
+                                    <td style="padding: 10px;">${ip.country || 'N/A'}</td>
+                                    <td style="padding: 10px; font-size: 13px;">
+                                        ${ip.reasons.map(r => `<span title="${getReasonTooltip(r)}" style="display: inline-block; margin: 2px; padding: 2px 6px; background: #e7f3ff; color: #004085; border-radius: 3px; font-size: 11px; cursor: help;">${r}</span>`).join('')}
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            
+            listDiv.innerHTML = tableHTML;
+        }
+        
+        resultsDiv.style.display = 'block';
+    }
+    
+    function getSimilarityColor(score) {
+        if (score >= 80) return '#28a745';  // Green
+        if (score >= 60) return '#ffc107';  // Yellow
+        if (score >= 40) return '#fd7e14';  // Orange
+        return '#dc3545';  // Red
+    }
+    
+    function showSimilarError(message) {
+        const errorDiv = document.getElementById('similar-error');
+        errorDiv.textContent = message;
+        errorDiv.style.display = 'block';
+    }
+    
+    function clearSimilarSearch() {
+        document.getElementById('similar-ip-input').value = '';
+        document.getElementById('similar-results').style.display = 'none';
+        document.getElementById('similar-error').style.display = 'none';
+        document.getElementById('clear-similar-btn').style.display = 'none';
+    }
+    
+    // Allow Enter key to trigger search
+    document.getElementById('similar-ip-input').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            findSimilarIPs();
+        }
+    });
+    </script>
 
 </body>
 </html>
