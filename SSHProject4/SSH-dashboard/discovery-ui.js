@@ -222,6 +222,17 @@ function switchDimension(dimension) {
         }
     }
     
+    // Show/hide IP cluster builder (only for IP dimension)
+    const clusterBuilder = document.getElementById('ip-cluster-builder');
+    if (clusterBuilder) {
+        clusterBuilder.style.display = (dimension === 'ip') ? 'block' : 'none';
+        
+        // Clear cluster when switching away from IP
+        if (dimension !== 'ip' && typeof clearCluster === 'function') {
+            clearCluster();
+        }
+    }
+    
     // Load data for new dimension
     loadData();
     renderHeader();

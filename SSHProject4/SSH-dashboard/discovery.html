@@ -120,6 +120,73 @@
         <div id="similar-error" style="display: none; margin-top: 10px; padding: 12px; background: #f8d7da; color: #721c24; border-radius: 4px;"></div>
     </div>
 
+    <!-- IP Cluster Builder (only visible for IP dimension) -->
+    <div id="ip-cluster-builder" style="display: none; margin-bottom: 20px; padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #dee2e6;">
+        <h3 style="margin-top: 0; color: #495057;">🧲 IP Cluster Builder</h3>
+        
+        <div style="display: flex; gap: 15px; margin-bottom: 15px; align-items: flex-end;">
+            <!-- Input Section -->
+            <div style="flex: 1;">
+                <label style="display: block; font-weight: 600; margin-bottom: 5px;">Add IP Address:</label>
+                <div style="display: flex; gap: 10px;">
+                    <input 
+                        type="text" 
+                        id="cluster-ip-input" 
+                        placeholder="e.g., 128.110.156.4"
+                        style="flex: 1; padding: 8px 12px; border: 1px solid #ced4da; border-radius: 4px; font-family: monospace;">
+                    <button 
+                        id="add-cluster-ip-btn"
+                        onclick="addIPToCluster()"
+                        style="padding: 8px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500;">
+                        Add IP
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Threshold Control -->
+            <div style="min-width: 200px;">
+                <label style="display: block; font-weight: 600; margin-bottom: 5px;">
+                    Similarity Threshold: <span id="threshold-value">60</span>%
+                </label>
+                <input 
+                    type="range" 
+                    id="similarity-threshold" 
+                    min="40" 
+                    max="90" 
+                    value="60" 
+                    oninput="updateThreshold(this.value)"
+                    style="width: 100%;">
+                <div id="connection-counter" style="margin-top: 8px; font-size: 12px; color: #6c757d; display: none;"></div>
+            </div>
+        </div>
+        
+        <!-- Selected IPs List -->
+        <div style="margin-bottom: 15px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <strong>Selected IPs (<span id="cluster-ip-count">0</span>/1000):</strong>
+                <button 
+                    id="clear-cluster-btn"
+                    onclick="clearCluster()"
+                    style="padding: 4px 12px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                    Clear All
+                </button>
+            </div>
+            <div id="cluster-ip-list" style="min-height: 40px; padding: 10px; background: white; border-radius: 4px; border: 1px solid #dee2e6;">
+                <span style="color: #6c757d; font-style: italic;">No IPs added yet</span>
+            </div>
+        </div>
+        
+        <!-- Graph -->
+        <div style="background: white; border-radius: 4px; border: 1px solid #dee2e6; padding: 15px;">
+            <strong style="display: block; margin-bottom: 10px;">Cluster Graph:</strong>
+            <svg id="cluster-graph" width="100%" height="400" style="border: 1px solid #e9ecef; border-radius: 4px;"></svg>
+        </div>
+        
+        <!-- Status Messages -->
+        <div id="cluster-status" style="margin-top: 10px; padding: 10px; background: #d1ecf1; color: #0c5460; border-radius: 4px; display: none;"></div>
+        <div id="cluster-error" style="margin-top: 10px; padding: 10px; background: #f8d7da; color: #721c24; border-radius: 4px; display: none;"></div>
+    </div>
+
     <!-- Data Table -->
     <div class="table-container">
         <table id="data-table">
@@ -268,6 +335,27 @@
                 inset -2px 0 0 0 #000,   /* Right border */
                 inset 0 1px 0 0 #e5e7eb, /* Top border (light) */
                 inset 0 -1px 0 0 #e5e7eb; /* Bottom border (light) */
+        }
+        
+        /* Cluster Builder Styles */
+        #cluster-graph {
+            background: #fafbfc;
+        }
+
+        #cluster-ip-input:focus,
+        #similarity-threshold:focus {
+            outline: none;
+            border-color: #007bff;
+            box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
+        }
+
+        #add-cluster-ip-btn:hover {
+            background: #0056b3;
+        }
+
+        #add-cluster-ip-btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
         }
     </style>
 
@@ -444,6 +532,296 @@
     document.getElementById('similar-ip-input').addEventListener('keypress', function(e) {
         if (e.key === 'Enter') {
             findSimilarIPs();
+        }
+    });
+    </script>
+
+    <!-- IP Cluster Builder Functionality -->
+    <script>
+    // IP Cluster Builder Functions
+
+    const clusterState = {
+        ips: [],              // Array of {ip, data} objects
+        threshold: 60,        // Similarity threshold
+        similarities: {}      // Cache of similarity data
+    };
+
+    function updateThreshold(value) {
+        clusterState.threshold = parseInt(value);
+        document.getElementById('threshold-value').textContent = value;
+        renderClusterGraph();
+    }
+
+    async function addIPToCluster() {
+        const input = document.getElementById('cluster-ip-input');
+        const ip = input.value.trim();
+        
+        if (!ip) {
+            showClusterError('Please enter an IP address');
+            return;
+        }
+        
+        if (clusterState.ips.length >= 1000) {
+            showClusterError('Maximum 1000 IPs allowed');
+            return;
+        }
+        
+        if (clusterState.ips.find(item => item.ip === ip)) {
+            showClusterError('IP already added');
+            return;
+        }
+        
+        // Show loading
+        const btn = document.getElementById('add-cluster-ip-btn');
+        btn.textContent = 'Adding...';
+        btn.disabled = true;
+        
+        try {
+            // Fetch similarity data for this IP
+            const response = await fetch(`${API_BASE}/api/find_similar_ips?ip=${encodeURIComponent(ip)}&limit=20`);
+            
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Failed to fetch IP data');
+            }
+            
+            const data = await response.json();
+            
+            // Add to cluster state
+            clusterState.ips.push({ ip, data });
+            clusterState.similarities[ip] = data;
+            
+            // Update UI
+            input.value = '';
+            updateClusterUI();
+            renderClusterGraph();
+            
+            showClusterStatus(`Added ${ip} to cluster`);
+            
+        } catch (error) {
+            console.error('Error adding IP:', error);
+            showClusterError(error.message);
+        } finally {
+            btn.textContent = 'Add IP';
+            btn.disabled = false;
+        }
+    }
+
+    function removeIPFromCluster(ip) {
+        const index = clusterState.ips.findIndex(item => item.ip === ip);
+        if (index !== -1) {
+            clusterState.ips.splice(index, 1);
+            delete clusterState.similarities[ip];
+            updateClusterUI();
+            renderClusterGraph();
+            showClusterStatus(`Removed ${ip} from cluster`);
+        }
+    }
+
+    function clearCluster() {
+        clusterState.ips = [];
+        clusterState.similarities = {};
+        updateClusterUI();
+        renderClusterGraph();
+        document.getElementById('cluster-status').style.display = 'none';
+    }
+
+    function updateClusterUI() {
+        const count = clusterState.ips.length;
+        document.getElementById('cluster-ip-count').textContent = count;
+        
+        const listDiv = document.getElementById('cluster-ip-list');
+        
+        if (count === 0) {
+            listDiv.innerHTML = '<span style="color: #6c757d; font-style: italic;">No IPs added yet</span>';
+        } else {
+            listDiv.innerHTML = clusterState.ips.map(item => `
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid #e9ecef;">
+                    <span style="font-family: monospace; font-weight: 500;">${item.ip}</span>
+                    <button 
+                        onclick="removeIPFromCluster('${item.ip}')"
+                        style="padding: 2px 8px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 11px;">
+                        Remove
+                    </button>
+                </div>
+            `).join('');
+        }
+    }
+
+    function renderClusterGraph() {
+        const svg = document.getElementById('cluster-graph');
+        const width = svg.clientWidth;
+        const height = 400;
+        
+        // Clear previous graph
+        svg.innerHTML = '';
+        
+        if (clusterState.ips.length === 0) {
+            // Show empty state
+            const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            text.setAttribute('x', width / 2);
+            text.setAttribute('y', height / 2);
+            text.setAttribute('text-anchor', 'middle');
+            text.setAttribute('fill', '#6c757d');
+            text.setAttribute('font-style', 'italic');
+            text.textContent = 'Add IPs to see cluster graph';
+            svg.appendChild(text);
+            return;
+        }
+        
+        // Calculate node positions (circular layout)
+        const centerX = width / 2;
+        const centerY = height / 2;
+        const radius = Math.min(width, height) * 0.35;
+        
+        const nodes = clusterState.ips.map((item, i) => {
+            const angle = (i / clusterState.ips.length) * 2 * Math.PI - Math.PI / 2;
+            return {
+                ip: item.ip,
+                x: centerX + radius * Math.cos(angle),
+                y: centerY + radius * Math.sin(angle),
+                data: item.data
+            };
+        });
+        
+        // Draw edges (similarity connections) and count them
+        const threshold = clusterState.threshold;
+        let connectionCount = 0;
+        let totalPossibleConnections = 0;
+        
+        for (let i = 0; i < nodes.length; i++) {
+            for (let j = i + 1; j < nodes.length; j++) {
+                totalPossibleConnections++;
+                const similarity = getSimilarity(nodes[i].ip, nodes[j].ip);
+                
+                if (similarity >= threshold) {
+                    connectionCount++;
+                    
+                    // Draw line
+                    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    line.setAttribute('x1', nodes[i].x);
+                    line.setAttribute('y1', nodes[i].y);
+                    line.setAttribute('x2', nodes[j].x);
+                    line.setAttribute('y2', nodes[j].y);
+                    line.setAttribute('stroke', '#007bff');
+                    line.setAttribute('stroke-width', (similarity / 100) * 5);
+                    line.setAttribute('opacity', '0.6');
+                    svg.appendChild(line);
+                    
+                    // Add similarity label at midpoint
+                    const midX = (nodes[i].x + nodes[j].x) / 2;
+                    const midY = (nodes[i].y + nodes[j].y) / 2;
+                    
+                    const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                    label.setAttribute('x', midX);
+                    label.setAttribute('y', midY - 5);
+                    label.setAttribute('text-anchor', 'middle');
+                    label.setAttribute('fill', '#495057');
+                    label.setAttribute('font-size', '11');
+                    label.setAttribute('font-weight', 'bold');
+                    label.textContent = `${similarity}%`;
+                    svg.appendChild(label);
+                }
+            }
+        }
+        
+        // Draw nodes
+        nodes.forEach(node => {
+            // Circle
+            const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            circle.setAttribute('cx', node.x);
+            circle.setAttribute('cy', node.y);
+            circle.setAttribute('r', 25);
+            circle.setAttribute('fill', '#28a745');
+            circle.setAttribute('stroke', '#fff');
+            circle.setAttribute('stroke-width', 3);
+            svg.appendChild(circle);
+            
+            // IP label
+            const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            text.setAttribute('x', node.x);
+            text.setAttribute('y', node.y + 40);
+            text.setAttribute('text-anchor', 'middle');
+            text.setAttribute('fill', '#212529');
+            text.setAttribute('font-size', '12');
+            text.setAttribute('font-family', 'monospace');
+            text.setAttribute('font-weight', 'bold');
+            text.textContent = node.ip;
+            svg.appendChild(text);
+        });
+        
+        // Update connection counter
+        updateConnectionCounter(connectionCount, totalPossibleConnections);
+    }
+
+    function getSimilarity(ip1, ip2) {
+        // Check if ip2 is in ip1's similar IPs list
+        const data1 = clusterState.similarities[ip1];
+        if (data1 && data1.similar_ips) {
+            const match = data1.similar_ips.find(item => item.ip === ip2);
+            if (match) return match.similarity;
+        }
+        
+        // Check reverse
+        const data2 = clusterState.similarities[ip2];
+        if (data2 && data2.similar_ips) {
+            const match = data2.similar_ips.find(item => item.ip === ip1);
+            if (match) return match.similarity;
+        }
+        
+        return 0; // No similarity data
+    }
+
+    function updateConnectionCounter(visible, total) {
+        const counterDiv = document.getElementById('connection-counter');
+        if (!counterDiv) return;
+        
+        if (total === 0) {
+            counterDiv.innerHTML = '';
+            counterDiv.style.display = 'none';
+            return;
+        }
+        
+        const percentage = ((visible / total) * 100).toFixed(0);
+        counterDiv.innerHTML = `
+            <span style="font-weight: 600; color: ${visible > 0 ? '#28a745' : '#dc3545'};">
+                ${visible}
+            </span> 
+            connections visible out of ${total} possible (${percentage}%)
+        `;
+        counterDiv.style.display = 'block';
+    }
+
+    function showClusterStatus(message) {
+        const statusDiv = document.getElementById('cluster-status');
+        const errorDiv = document.getElementById('cluster-error');
+        
+        statusDiv.textContent = message;
+        statusDiv.style.display = 'block';
+        errorDiv.style.display = 'none';
+        
+        setTimeout(() => {
+            statusDiv.style.display = 'none';
+        }, 3000);
+    }
+
+    function showClusterError(message) {
+        const statusDiv = document.getElementById('cluster-status');
+        const errorDiv = document.getElementById('cluster-error');
+        
+        errorDiv.textContent = message;
+        errorDiv.style.display = 'block';
+        statusDiv.style.display = 'none';
+        
+        setTimeout(() => {
+            errorDiv.style.display = 'none';
+        }, 5000);
+    }
+
+    // Allow Enter key to add IP
+    document.getElementById('cluster-ip-input').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            addIPToCluster();
         }
     });
     </script>
