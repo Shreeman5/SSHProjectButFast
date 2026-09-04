@@ -111,8 +111,8 @@ function renderLineChart(containerId, data, options) {
     ticks.each(function(d, i) {
         if (i === tickCount - 1) {  // Last tick (top value)
             d3.select(this).select('text')
-                .style('font-size', '18px')
-                .style('font-weight', 'bold');
+                .style('font-size', '15px')
+                // .style('font-weight', 'bold');
         }
     });
     
@@ -351,8 +351,8 @@ function renderMultiLineChart(containerId, series, options) {
     ticks.each(function(d, i) {
         if (i === tickCount - 1) {  // Top tick
             d3.select(this).select('text')
-                .style('font-size', '18px')
-                .style('font-weight', 'bold');
+                .style('font-size', '15px')
+                // .style('font-weight', 'bold');
         } else {  // All other ticks
             d3.select(this).select('text')
                 .style('font-size', '15px')

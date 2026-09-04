@@ -1051,12 +1051,12 @@
 
         // Outlier / weak-match warning. Twenty rows that look like findings when
         // they aren't is worse than no rows.
-        if (data.quality && data.quality.note) {
-            noteDiv.innerHTML = `⚠️ ${escUser(data.quality.note)}`;
-            noteDiv.style.display = 'block';
-        } else {
-            noteDiv.style.display = 'none';
-        }
+        // if (data.quality && data.quality.note) {
+        //     noteDiv.innerHTML = `⚠️ ${escUser(data.quality.note)}`;
+        //     noteDiv.style.display = 'block';
+        // } else {
+        //     noteDiv.style.display = 'none';
+        // }
 
         const rows = data.similar_usernames || [];
 
