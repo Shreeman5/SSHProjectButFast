@@ -233,6 +233,32 @@ function switchDimension(dimension) {
         }
     }
     
+    // Show/hide similar usernames search (only for username dimension)
+    const similarUsernameSearch = document.getElementById('similar-usernames-search');
+    if (similarUsernameSearch) {
+        similarUsernameSearch.style.display = (dimension === 'username') ? 'block' : 'none';
+        
+        // Clear search when switching away from username, so results from one
+        // dimension are never left on screen under another dimension's heading
+        if (dimension !== 'username' && typeof clearSimilarUsernameSearch === 'function') {
+            clearSimilarUsernameSearch();
+        }
+    }
+    
+    // Show/hide tag manager (R4). Currently wired for the username dimension;
+    // the API is dimension-scoped, so extending it to ip/asn/country is a
+    // matter of widening this condition once those tabs have tag columns.
+    const tagManager = document.getElementById('tag-manager');
+    if (tagManager) {
+        tagManager.style.display = (dimension === 'username') ? 'block' : 'none';
+        
+        if (dimension === 'username' && typeof loadTags === 'function') {
+            document.getElementById('operator-name').textContent =
+                localStorage.getItem('discovery_operator') || 'not set';
+            loadTags();
+        }
+    }
+    
     // Load data for new dimension
     loadData();
     renderHeader();

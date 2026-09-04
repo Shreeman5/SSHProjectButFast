@@ -26,6 +26,11 @@ from endpoints.ip_summary import register_ip_summary
 from endpoints.asn_summary import register_asn_summary
 from endpoints.username_summary import register_username_summary
 
+from endpoints.similar_ips_endpoint import register_similar_ips
+from endpoints.similar_usernames_endpoint import register_similar_usernames
+
+from endpoints.tags_endpoint import register_tags
+
 # Register all endpoints
 register_total_attacks(app)
 register_country_attacks(app)
@@ -34,12 +39,15 @@ register_username_attacks(app)
 register_asn_attacks(app)
 register_date_range(app)
 register_index(app)
+register_similar_usernames(app)
 
 # Register summary endpoints
 register_country_summary(app)
 register_ip_summary(app)
 register_asn_summary(app)
 register_username_summary(app)
+register_similar_ips(app)
+register_tags(app)
 
 if __name__ == '__main__':
     from utils.config import DB_PATH

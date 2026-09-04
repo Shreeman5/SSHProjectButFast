@@ -187,6 +187,100 @@
         <div id="cluster-error" style="margin-top: 10px; padding: 10px; background: #f8d7da; color: #721c24; border-radius: 4px; display: none;"></div>
     </div>
 
+    <!-- Tag Manager (R4) - visible for username dimension -->
+    <div id="tag-manager" style="display: none; margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #dee2e6;">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <strong style="font-size: 15px;">🏷️ Tag Repository</strong>
+                <span id="tag-stats" style="color: #6c757d; font-size: 13px;"></span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 13px; color: #6c757d;">Operator:</span>
+                <span id="operator-name" style="font-weight: 600; font-size: 13px;">—</span>
+                <button onclick="changeOperator()" style="padding: 4px 10px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Change</button>
+                <button id="tag-manager-toggle" onclick="toggleTagManager()" style="padding: 6px 14px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;">Show</button>
+            </div>
+        </div>
+
+        <div id="tag-manager-body" style="display: none; margin-top: 15px;">
+            <!-- Create -->
+            <div style="padding: 12px; background: white; border-radius: 4px; border: 1px solid #dee2e6; margin-bottom: 12px;">
+                <div style="display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap;">
+                    <div style="flex: 1; min-width: 160px;">
+                        <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px;">Tag name</label>
+                        <input type="text" id="new-tag-name" placeholder="e.g. de-firstnames" maxlength="49"
+                               style="width: 100%; padding: 7px 10px; border: 1px solid #ced4da; border-radius: 4px;">
+                    </div>
+                    <div style="flex: 2; min-width: 200px;">
+                        <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px;">What does it mean? <span style="font-weight: 400; color: #6c757d;">(this is what saves the next operator time)</span></label>
+                        <input type="text" id="new-tag-desc" placeholder="German first-name wordlist, 3 shared IPs in 109.239.58-60" maxlength="500"
+                               style="width: 100%; padding: 7px 10px; border: 1px solid #ced4da; border-radius: 4px;">
+                    </div>
+                    <div>
+                        <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px;">Colour</label>
+                        <input type="color" id="new-tag-color" value="#D4537E"
+                               style="width: 46px; height: 34px; padding: 2px; border: 1px solid #ced4da; border-radius: 4px; cursor: pointer;">
+                    </div>
+                    <button onclick="createTag()" style="padding: 8px 18px; background: #10b981; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500;">Create tag</button>
+                </div>
+            </div>
+
+            <!-- Existing tags -->
+            <div id="tag-list" style="margin-bottom: 12px;"></div>
+
+            <!-- Tagged entities browser -->
+            <div>
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+                    <strong style="font-size: 13px;">Tagged usernames</strong>
+                    <select id="tag-browse-filter" onchange="loadTaggedEntities()"
+                            style="padding: 5px 8px; border: 1px solid #ced4da; border-radius: 4px; font-size: 13px;">
+                        <option value="">All tags</option>
+                    </select>
+                    <button onclick="loadTaggedEntities()" style="padding: 5px 12px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Refresh</button>
+                </div>
+                <div id="tagged-entities-list"></div>
+            </div>
+        </div>
+
+        <div id="tag-message" style="display: none; margin-top: 10px; padding: 10px; border-radius: 4px; font-size: 13px;"></div>
+    </div>
+
+    <!-- Similar Usernames Search (only visible for username dimension) -->
+    <div id="similar-usernames-search" style="display: none; margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #dee2e6;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <label style="font-weight: 600; min-width: 180px;">🔍 Find Similar Usernames:</label>
+            <input
+                type="text"
+                id="similar-username-input"
+                placeholder="Enter username (e.g., root)"
+                style="flex: 1; padding: 8px 12px; border: 1px solid #ced4da; border-radius: 4px; font-family: monospace;">
+            <button
+                id="find-similar-username-btn"
+                onclick="findSimilarUsernames()"
+                style="padding: 8px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500;">
+                Search
+            </button>
+            <button
+                id="clear-similar-username-btn"
+                onclick="clearSimilarUsernameSearch()"
+                style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; display: none;">
+                Clear
+            </button>
+        </div>
+
+        <!-- Results -->
+        <div id="similar-username-results" style="display: none;">
+            <div id="username-cluster-info" style="margin-top: 15px; padding: 12px; background: white; border-radius: 4px; border-left: 4px solid #007bff;"></div>
+            <div id="username-quality-note" style="display: none; margin-top: 12px; padding: 12px; background: #fff3cd; color: #664d03; border-radius: 4px; border-left: 4px solid #ffc107; font-size: 13px;"></div>
+            <div id="username-prior-work" style="display: none; margin-top: 12px; padding: 12px; background: #f3e8ff; color: #4b2a75; border-radius: 4px; border-left: 4px solid #9333ea; font-size: 13px;"></div>
+            <div id="username-shared-ips" style="display: none; margin-top: 12px; padding: 12px; background: #e7f3ff; color: #004085; border-radius: 4px; border-left: 4px solid #007bff; font-size: 13px;"></div>
+            <div id="similar-usernames-list" style="margin-top: 15px;"></div>
+        </div>
+
+        <!-- Error / explanatory message -->
+        <div id="similar-username-error" style="display: none; margin-top: 12px; padding: 12px; background: #f8d7da; color: #721c24; border-radius: 4px;"></div>
+    </div>
+
     <!-- Data Table -->
     <div class="table-container">
         <table id="data-table">
@@ -824,6 +918,638 @@
             addIPToCluster();
         }
     });
+    </script>
+
+    <!-- Similar Usernames Search Functionality -->
+    <script>
+    // ---------------------------------------------------------------------------
+    // Similar Usernames Search
+    // ---------------------------------------------------------------------------
+
+    // Usernames come straight out of attack logs, so they are attacker-controlled
+    // and can contain <, >, quotes. Everything below renders through innerHTML, so
+    // every username must pass through here first. IP addresses do not have this
+    // problem, which is why the IP panel gets away without it.
+    function escUser(str) {
+        if (str === null || str === undefined) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    // "178.88.161.82 (6.3%), 149.202.74.37 (4.2%)" -> [{ip, pct}, ...]
+    function parseIpConcentration(str) {
+        if (!str) return [];
+        const out = [];
+        const re = /([^\s(,]+)\s*\(\s*(-?[\d.]+)%\s*\)/g;
+        let m;
+        while ((m = re.exec(str)) !== null) {
+            out.push({ ip: m[1], pct: parseFloat(m[2]) });
+        }
+        return out;
+    }
+
+    async function findSimilarUsernames() {
+        const input = document.getElementById('similar-username-input');
+        const target = input.value.trim();
+
+        if (!target) {
+            showSimilarUsernameError('Please enter a username');
+            return;
+        }
+
+        document.getElementById('similar-username-results').style.display = 'none';
+        document.getElementById('similar-username-error').style.display = 'none';
+
+        const btn = document.getElementById('find-similar-username-btn');
+        btn.textContent = 'Searching...';
+        btn.disabled = true;
+
+        try {
+            const response = await fetch(
+                `${API_BASE}/api/find_similar_usernames?username=${encodeURIComponent(target)}&limit=20`
+            );
+            const data = await response.json();
+
+            if (!response.ok) {
+                // The endpoint distinguishes "never seen" from "seen but too sparse
+                // to cluster". The second case deserves the explanation, not a bare
+                // failure message.
+                if (data.reason === 'excluded_single_day') {
+                    showSimilarUsernameError(
+                        `<strong>${escUser(data.error)}</strong>` +
+                        `<div style="margin-top: 8px; font-weight: normal; opacity: 0.85;">${escUser(data.detail || '')}</div>`,
+                        true
+                    );
+                } else {
+                    showSimilarUsernameError(data.error || 'Search failed');
+                }
+                return;
+            }
+
+            displaySimilarUsernameResults(data);
+            document.getElementById('clear-similar-username-btn').style.display = 'inline-block';
+
+        } catch (error) {
+            console.error('Error finding similar usernames:', error);
+            showSimilarUsernameError(error.message);
+        } finally {
+            btn.textContent = 'Search';
+            btn.disabled = false;
+        }
+    }
+
+    function getUsernameReasonTooltip(reason) {
+        if (reason.startsWith('Same lead source')) {
+            return 'The single largest source country is the same for both usernames';
+        } else if (reason === 'Comparable volume') {
+            return 'Total attack counts are within a factor of two of each other';
+        } else if (reason.startsWith('Botnet-scale sourcing')) {
+            return 'Both usernames are attacked from a comparably huge set of IPs (2000+)';
+        } else if (reason.startsWith('Narrow attacker base')) {
+            return 'Both usernames are attacked from a comparably small set of IPs (under 20)';
+        } else if (reason.startsWith('Similar attacker breadth')) {
+            return 'Both usernames are attacked from a comparable number of distinct IPs';
+        } else if (reason === 'Stable attacker set') {
+            return 'For both, largely the same IPs return day after day (ip_stability > 0.50)';
+        } else if (reason === 'Volatile attacker set') {
+            return 'For both, the attacking IPs turn over almost completely each day (ip_stability < 0.15)';
+        } else if (reason.startsWith('Concentrated')) {
+            return 'Both see a comparable and high number of attacks per IP — few hosts working hard, rather than many hosts probing lightly';
+        } else if (reason.startsWith('Persistent')) {
+            return 'Both are attacked on more than 60% of days in the period';
+        } else if (reason === 'Same behavioural cluster') {
+            return 'No single strong signal matched, but k-means placed both in the same behavioural cluster';
+        }
+        return reason;
+    }
+
+    async function displaySimilarUsernameResults(data) {
+        const resultsDiv = document.getElementById('similar-username-results');
+        const clusterDiv = document.getElementById('username-cluster-info');
+        const noteDiv = document.getElementById('username-quality-note');
+        const sharedDiv = document.getElementById('username-shared-ips');
+        const listDiv = document.getElementById('similar-usernames-list');
+
+        const c = data.cluster;
+        clusterDiv.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 20px;">
+                <div>
+                    <strong style="font-size: 16px;">${escUser(c.profile_name)}</strong>
+                    <div style="color: #6c757d; font-size: 13px; margin-top: 4px;">${escUser(c.profile_description)}</div>
+                </div>
+                <div style="text-align: right; white-space: nowrap;">
+                    <div style="font-size: 14px; color: #6c757d;">Cluster ${c.cluster_id}</div>
+                    <div style="font-size: 14px; color: #6c757d;">${c.cluster_size.toLocaleString()} usernames in this pattern</div>
+                    <div style="font-size: 12px; color: #adb5bd; margin-top: 2px;">distance from centre: ${c.distance_from_centroid}</div>
+                </div>
+            </div>
+        `;
+
+        // Outlier / weak-match warning. Twenty rows that look like findings when
+        // they aren't is worse than no rows.
+        if (data.quality && data.quality.note) {
+            noteDiv.innerHTML = `⚠️ ${escUser(data.quality.note)}`;
+            noteDiv.style.display = 'block';
+        } else {
+            noteDiv.style.display = 'none';
+        }
+
+        const rows = data.similar_usernames || [];
+
+        // Fetch existing tags for everything on screen before rendering, so the
+        // prior-work banner and the chips appear together rather than popping in.
+        selectedForTagging.clear();
+        currentEntityTags = await fetchTagsForEntities(rows.map(r => r.username));
+
+        if (rows.length === 0) {
+            sharedDiv.style.display = 'none';
+            const pw = document.getElementById('username-prior-work');
+            if (pw) pw.style.display = 'none';
+            listDiv.innerHTML = '<div style="padding: 20px; text-align: center; color: #6c757d;">No similar usernames found in this cluster.</div>';
+            resultsDiv.style.display = 'block';
+            return;
+        }
+
+        // ---- shared infrastructure -------------------------------------------
+        // The clustering never sees IP identity, only aggregate counts and
+        // stability scores. When the same IP turns up under several results, that
+        // is shared infrastructure recovered from behaviour alone -- the strongest
+        // campaign signal on this screen, so it gets called out explicitly.
+        const ipCounts = {};
+        rows.forEach(r => {
+            parseIpConcentration(r.ip_concentration).forEach(e => {
+                (ipCounts[e.ip] = ipCounts[e.ip] || []).push(r.username);
+            });
+        });
+        const shared = Object.keys(ipCounts).filter(ip => ipCounts[ip].length > 1);
+
+        if (shared.length > 0) {
+            sharedDiv.innerHTML =
+                `<strong>🧲 Shared infrastructure:</strong> ` +
+                `${shared.length} IP${shared.length > 1 ? 's' : ''} appear in the top attackers of more than one result. ` +
+                `Highlighted below.` +
+                `<div style="margin-top: 8px; font-family: monospace; font-size: 12px;">` +
+                shared.slice(0, 6).map(ip =>
+                    `<div style="margin: 2px 0;"><strong>${escUser(ip)}</strong> → ${ipCounts[ip].map(u => escUser(u)).join(', ')}</div>`
+                ).join('') +
+                (shared.length > 6 ? `<div style="margin-top: 4px; opacity: 0.7;">…and ${shared.length - 6} more</div>` : '') +
+                `</div>`;
+            sharedDiv.style.display = 'block';
+        } else {
+            sharedDiv.style.display = 'none';
+        }
+
+        // ---- results table ----------------------------------------------------
+        const th = 'padding: 10px; border-bottom: 2px solid #dee2e6;';
+        listDiv.innerHTML = `
+            <div style="background: white; border-radius: 4px; overflow: hidden; border: 1px solid #dee2e6;">
+                <div style="padding: 12px; background: #f8f9fa; border-bottom: 1px solid #dee2e6; font-weight: 600;">
+                    Found ${data.total_in_cluster.toLocaleString()} Similar Usernames (showing top ${rows.length})
+                </div>
+                ${renderBulkTagBar()}
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead style="background: #f8f9fa;">
+                        <tr>
+                            <th style="${th} text-align: center; width: 30px;"><input type="checkbox" onchange="toggleAllTagSelection(this.checked)" title="Select all" style="cursor: pointer;"></th>
+                            <th style="${th} text-align: left;">Rank</th>
+                            <th style="${th} text-align: left;">Username</th>
+                            <th style="${th} text-align: center;">Similarity</th>
+                            <th style="${th} text-align: right;">Total Attacks</th>
+                            <th style="${th} text-align: left;">Top Source</th>
+                            <th style="${th} text-align: left;">Top IPs</th>
+                            <th style="${th} text-align: left;">Why Similar?</th>
+                            <th style="${th} text-align: left;">Tags</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows.map((u, idx) => {
+                            const ips = parseIpConcentration(u.ip_concentration).slice(0, 3);
+                            const ipCell = ips.length === 0
+                                ? '<span style="color: #adb5bd;">N/A</span>'
+                                : ips.map(e => {
+                                    const isShared = ipCounts[e.ip] && ipCounts[e.ip].length > 1;
+                                    return `<div style="font-family: monospace; font-size: 11px; margin: 1px 0; ${
+                                        isShared ? 'background: #fff3cd; font-weight: 700; padding: 1px 4px; border-radius: 3px;' : ''
+                                    }" ${isShared ? `title="Also attacks: ${escUser(ipCounts[e.ip].filter(n => n !== u.username).join(', '))}"` : ''}>${escUser(e.ip)} <span style="color: #6c757d; font-weight: 400;">(${e.pct}%)</span></div>`;
+                                  }).join('');
+
+                            const uname = escUser(u.username) ||
+                                '<em style="color:#6c757d;">(empty)</em>';
+
+                            return `
+                            <tr style="border-bottom: 1px solid #dee2e6; ${idx % 2 === 0 ? 'background: #f8f9fa;' : ''}">
+                                <td style="padding: 10px; text-align: center; vertical-align: top;">
+                                    <input type="checkbox" class="tag-row-check" data-entity="${escUser(u.username)}"
+                                           onchange="toggleTagSelection(this.getAttribute('data-entity'))" style="cursor: pointer;">
+                                </td>
+                                <td style="padding: 10px; vertical-align: top;">${idx + 1}</td>
+                                <td style="padding: 10px; font-family: monospace; font-weight: 500; vertical-align: top;">${uname}</td>
+                                <td style="padding: 10px; text-align: center; vertical-align: top;">
+                                    <span style="display: inline-block; padding: 4px 8px; background: ${getSimilarityColor(u.similarity)}; color: white; border-radius: 4px; font-weight: 600;">
+                                        ${u.similarity}%
+                                    </span>
+                                </td>
+                                <td style="padding: 10px; text-align: right; vertical-align: top;">
+                                    ${formatNumber(u.total_attacks)}
+                                    <div style="font-size: 11px; color: #6c757d;">${u.unique_ips != null ? formatNumber(u.unique_ips) + ' IPs' : ''}</div>
+                                </td>
+                                <td style="padding: 10px; vertical-align: top;">${escUser(u.top_country) || 'N/A'}</td>
+                                <td style="padding: 10px; vertical-align: top;">${ipCell}</td>
+                                <td style="padding: 10px; font-size: 13px; vertical-align: top;">
+                                    ${u.reasons.map(r => `<span title="${escUser(getUsernameReasonTooltip(r))}" style="display: inline-block; margin: 2px; padding: 2px 6px; background: #e7f3ff; color: #004085; border-radius: 3px; font-size: 11px; cursor: help;">${escUser(r)}</span>`).join('')}
+                                </td>
+                                <td style="padding: 10px; vertical-align: top;" data-tagcell="${escUser(u.username)}">${renderTagChips(u.username)}</td>
+                            </tr>`;
+                        }).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+
+        renderPriorWorkBanner();
+        updateTagBar();
+
+        resultsDiv.style.display = 'block';
+    }
+
+    function showSimilarUsernameError(message, isHtml) {
+        const errorDiv = document.getElementById('similar-username-error');
+        if (isHtml) {
+            errorDiv.innerHTML = message;
+        } else {
+            errorDiv.textContent = message;
+        }
+        errorDiv.style.display = 'block';
+        document.getElementById('similar-username-results').style.display = 'none';
+    }
+
+    function clearSimilarUsernameSearch() {
+        document.getElementById('similar-username-input').value = '';
+        document.getElementById('similar-username-results').style.display = 'none';
+        document.getElementById('similar-username-error').style.display = 'none';
+        document.getElementById('clear-similar-username-btn').style.display = 'none';
+    }
+
+    // Enter key triggers search
+    document.getElementById('similar-username-input').addEventListener('keypress', function (e) {
+        if (e.key === 'Enter') {
+            findSimilarUsernames();
+        }
+    });
+    </script>
+
+    <!-- Tagging (R4) -->
+    <script>
+    // ---------------------------------------------------------------------------
+    // Tagging (R4)
+    //
+    // A shared, named tag repository plus per-entity applications. Backed by
+    // tags.db via /api/tags and /api/entity_tags.
+    //
+    // There is no auth in this system, so the operator name is self-declared and
+    // kept in localStorage. It is attribution, not access control.
+    // ---------------------------------------------------------------------------
+
+    let tagRepo = [];              // [{tag_name, color, description, uses_here, ...}]
+    let currentEntityTags = {};    // entity_id -> [{tag_name, color, note, tagged_by}]
+    let selectedForTagging = new Set();
+
+    function getOperator() {
+        let op = localStorage.getItem('discovery_operator');
+        if (!op) {
+            op = (prompt('Your name (recorded against tags you create):') || '').trim();
+            if (!op) op = 'unknown';
+            localStorage.setItem('discovery_operator', op);
+        }
+        return op;
+    }
+
+    function changeOperator() {
+        const cur = localStorage.getItem('discovery_operator') || '';
+        const next = (prompt('Operator name:', cur) || '').trim();
+        if (next) {
+            localStorage.setItem('discovery_operator', next);
+            document.getElementById('operator-name').textContent = next;
+        }
+    }
+
+    function showTagMessage(text, isError) {
+        const el = document.getElementById('tag-message');
+        el.textContent = text;
+        el.style.background = isError ? '#f8d7da' : '#d1e7dd';
+        el.style.color = isError ? '#721c24' : '#0f5132';
+        el.style.display = 'block';
+        clearTimeout(el._t);
+        el._t = setTimeout(() => { el.style.display = 'none'; }, 5000);
+    }
+
+    function toggleTagManager() {
+        const body = document.getElementById('tag-manager-body');
+        const btn = document.getElementById('tag-manager-toggle');
+        const open = body.style.display !== 'none';
+        body.style.display = open ? 'none' : 'block';
+        btn.textContent = open ? 'Show' : 'Hide';
+        if (!open) { loadTags(); loadTaggedEntities(); }
+    }
+
+    // ---- repository -----------------------------------------------------------
+
+    async function loadTags() {
+        try {
+            const r = await fetch(`${API_BASE}/api/tags?dimension=${currentDimension}`);
+            tagRepo = await r.json();
+            renderTagList();
+            renderTagFilterOptions();
+
+            const s = await (await fetch(`${API_BASE}/api/tags/stats`)).json();
+            document.getElementById('tag-stats').textContent =
+                `${s.total_tags} tag${s.total_tags === 1 ? '' : 's'}, ${s.total_applications} application${s.total_applications === 1 ? '' : 's'}`;
+        } catch (e) {
+            console.error('loadTags', e);
+            showTagMessage('Could not load tags: ' + e.message, true);
+        }
+    }
+
+    function renderTagList() {
+        const el = document.getElementById('tag-list');
+        if (!tagRepo.length) {
+            el.innerHTML = '<div style="padding: 14px; text-align: center; color: #6c757d; background: white; border: 1px solid #dee2e6; border-radius: 4px;">No tags yet. Create one above.</div>';
+            return;
+        }
+        el.innerHTML = `
+            <div style="background: white; border: 1px solid #dee2e6; border-radius: 4px; overflow: hidden;">
+                ${tagRepo.map(t => `
+                    <div style="display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-bottom: 1px solid #f1f3f5;">
+                        <span style="display: inline-block; padding: 3px 10px; border-radius: 11px; background: ${escUser(t.color)}22; color: ${escUser(t.color)}; border: 1px solid ${escUser(t.color)}; font-size: 12px; font-weight: 600; white-space: nowrap;">${escUser(t.tag_name)}</span>
+                        <span style="flex: 1; font-size: 12px; color: #6c757d;">${escUser(t.description) || '<em>no description</em>'}</span>
+                        <span style="font-size: 12px; color: #6c757d; white-space: nowrap;">${t.uses_here} here / ${t.uses_total} total</span>
+                        <span style="font-size: 11px; color: #adb5bd; white-space: nowrap;">by ${escUser(t.created_by)}</span>
+                        <button onclick="deleteTag('${escUser(t.tag_name).replace(/'/g, "\\'")}')"
+                                style="padding: 3px 10px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 11px;">Delete</button>
+                    </div>
+                `).join('')}
+            </div>`;
+    }
+
+    function renderTagFilterOptions() {
+        const sel = document.getElementById('tag-browse-filter');
+        const keep = sel.value;
+        sel.innerHTML = '<option value="">All tags</option>' +
+            tagRepo.map(t => `<option value="${escUser(t.tag_name)}">${escUser(t.tag_name)}</option>`).join('');
+        sel.value = keep;
+    }
+
+    async function createTag() {
+        const name = document.getElementById('new-tag-name').value.trim();
+        const desc = document.getElementById('new-tag-desc').value.trim();
+        const color = document.getElementById('new-tag-color').value;
+
+        if (!name) { showTagMessage('Give the tag a name', true); return; }
+        if (!desc) {
+            // A bare label saves nobody work. The description is the part that stops
+            // the next operator repeating the analysis, which is the point of R4.
+            if (!confirm('No description. A tag without one tells the next operator nothing about why it was applied.\n\nCreate it anyway?')) return;
+        }
+
+        try {
+            const r = await fetch(`${API_BASE}/api/tags`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tag_name: name, description: desc, color, operator: getOperator() })
+            });
+            const j = await r.json();
+            if (!r.ok) { showTagMessage(j.error || 'Could not create tag', true); return; }
+
+            document.getElementById('new-tag-name').value = '';
+            document.getElementById('new-tag-desc').value = '';
+            showTagMessage(`Created "${name}"`);
+            loadTags();
+        } catch (e) {
+            showTagMessage('Could not create tag: ' + e.message, true);
+        }
+    }
+
+    // FAILSAFE: the server dry-runs first and reports the blast radius, then we ask.
+    async function deleteTag(name) {
+        try {
+            const dry = await (await fetch(
+                `${API_BASE}/api/tags/${encodeURIComponent(name)}`, { method: 'DELETE' })).json();
+            if (dry.error) { showTagMessage(dry.error, true); return; }
+
+            const msg = dry.would_remove > 0
+                ? `Delete "${name}"?\n\nIt is currently applied to ${dry.would_remove} entit${dry.would_remove === 1 ? 'y' : 'ies'}. All of those applications will be removed too.\n\nThis cannot be undone.`
+                : `Delete "${name}"? It is not applied to anything.`;
+            if (!confirm(msg)) return;
+
+            const r = await fetch(
+                `${API_BASE}/api/tags/${encodeURIComponent(name)}?confirm=true`, { method: 'DELETE' });
+            const j = await r.json();
+            if (!r.ok) { showTagMessage(j.error || 'Could not delete', true); return; }
+
+            showTagMessage(`Deleted "${name}" and ${j.removed_applications} application(s)`);
+            loadTags();
+            loadTaggedEntities();
+            refreshTagsInResults();
+        } catch (e) {
+            showTagMessage('Could not delete tag: ' + e.message, true);
+        }
+    }
+
+    // ---- tagged entity browser ------------------------------------------------
+
+    async function loadTaggedEntities() {
+        const filter = document.getElementById('tag-browse-filter').value;
+        const el = document.getElementById('tagged-entities-list');
+        try {
+            let url = `${API_BASE}/api/entity_tags/list?dimension=${currentDimension}`;
+            if (filter) url += `&tag_name=${encodeURIComponent(filter)}`;
+            const rows = await (await fetch(url)).json();
+
+            if (!rows.length) {
+                el.innerHTML = '<div style="padding: 14px; text-align: center; color: #6c757d; background: white; border: 1px solid #dee2e6; border-radius: 4px;">Nothing tagged yet in this dimension.</div>';
+                return;
+            }
+
+            el.innerHTML = `
+                <div style="background: white; border: 1px solid #dee2e6; border-radius: 4px; max-height: 320px; overflow-y: auto;">
+                    ${rows.map(r => `
+                        <div style="display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-bottom: 1px solid #f1f3f5;">
+                            <span style="font-family: monospace; font-weight: 500; min-width: 140px;">${escUser(r.entity_id) || '<em style="color:#6c757d">(empty)</em>'}</span>
+                            <span style="display: inline-block; padding: 2px 9px; border-radius: 10px; background: ${escUser(r.color)}22; color: ${escUser(r.color)}; border: 1px solid ${escUser(r.color)}; font-size: 11px; font-weight: 600; white-space: nowrap;">${escUser(r.tag_name)}</span>
+                            <span style="flex: 1; font-size: 12px; color: #6c757d;">${escUser(r.note)}</span>
+                            <span style="font-size: 11px; color: #adb5bd; white-space: nowrap;">${escUser(r.tagged_by)} · ${escUser((r.tagged_at || '').slice(0, 16))}</span>
+                            <button onclick="untagEntity('${escUser(r.entity_id).replace(/'/g, "\\'")}', '${escUser(r.tag_name).replace(/'/g, "\\'")}')"
+                                    style="padding: 2px 9px; background: #6c757d; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 11px;">Untag</button>
+                        </div>
+                    `).join('')}
+                </div>`;
+        } catch (e) {
+            el.innerHTML = `<div style="padding: 14px; color: #721c24;">Could not load: ${escUser(e.message)}</div>`;
+        }
+    }
+
+    // FAILSAFE: remove one tag from one entity without touching the tag itself.
+    async function untagEntity(entity, tag) {
+        if (!confirm(`Remove tag "${tag}" from "${entity}"?`)) return;
+        try {
+            const r = await fetch(`${API_BASE}/api/entity_tags/remove`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dimension: currentDimension, entities: [entity], tag_name: tag })
+            });
+            const j = await r.json();
+            if (!r.ok) { showTagMessage(j.error || 'Could not untag', true); return; }
+            showTagMessage(`Removed "${tag}" from "${entity}"`);
+            loadTags();
+            loadTaggedEntities();
+            refreshTagsInResults();
+        } catch (e) {
+            showTagMessage('Could not untag: ' + e.message, true);
+        }
+    }
+
+    // ---- tagging from similarity results --------------------------------------
+
+    async function fetchTagsForEntities(entities) {
+        if (!entities.length) return {};
+        try {
+            const r = await fetch(`${API_BASE}/api/entity_tags/lookup`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dimension: currentDimension, entities })
+            });
+            return r.ok ? await r.json() : {};
+        } catch (e) {
+            console.error('fetchTagsForEntities', e);
+            return {};
+        }
+    }
+
+    function toggleTagSelection(name) {
+        if (selectedForTagging.has(name)) selectedForTagging.delete(name);
+        else selectedForTagging.add(name);
+        updateTagBar();
+    }
+
+    function toggleAllTagSelection(checked) {
+        document.querySelectorAll('.tag-row-check').forEach(cb => {
+            cb.checked = checked;
+            const n = cb.getAttribute('data-entity');
+            if (checked) selectedForTagging.add(n); else selectedForTagging.delete(n);
+        });
+        updateTagBar();
+    }
+
+    function updateTagBar() {
+        const bar = document.getElementById('bulk-tag-bar');
+        if (!bar) return;
+        const n = selectedForTagging.size;
+        document.getElementById('bulk-tag-count').textContent = n;
+        bar.style.opacity = n ? '1' : '0.55';
+        document.getElementById('bulk-tag-apply').disabled = n === 0;
+    }
+
+    async function applyBulkTag() {
+        const sel = document.getElementById('bulk-tag-select');
+        const tag = sel.value;
+        const note = document.getElementById('bulk-tag-note').value.trim();
+        const entities = Array.from(selectedForTagging);
+
+        if (!tag) { showTagMessage('Pick a tag first', true); return; }
+        if (!entities.length) { showTagMessage('Select at least one username', true); return; }
+        if (!confirm(`Apply tag "${tag}" to ${entities.length} username(s)?`)) return;
+
+        try {
+            const r = await fetch(`${API_BASE}/api/entity_tags`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    dimension: currentDimension, entities, tag_name: tag,
+                    note, operator: getOperator()
+                })
+            });
+            const j = await r.json();
+            if (!r.ok) { showTagMessage(j.error || 'Could not apply tag', true); return; }
+
+            showTagMessage(`Applied "${tag}" to ${j.applied} username(s)` +
+                (j.already_tagged ? ` (${j.already_tagged} already had it)` : ''));
+            selectedForTagging.clear();
+            document.getElementById('bulk-tag-note').value = '';
+            loadTags();
+            loadTaggedEntities();
+            refreshTagsInResults();
+        } catch (e) {
+            showTagMessage('Could not apply tag: ' + e.message, true);
+        }
+    }
+
+    // Re-fetch tags for whatever is currently on screen and repaint the chips.
+    async function refreshTagsInResults() {
+        const cells = document.querySelectorAll('[data-tagcell]');
+        if (!cells.length) return;
+        const entities = Array.from(cells).map(c => c.getAttribute('data-tagcell'));
+        currentEntityTags = await fetchTagsForEntities(entities);
+        cells.forEach(c => {
+            c.innerHTML = renderTagChips(c.getAttribute('data-tagcell'));
+        });
+        renderPriorWorkBanner();
+        document.querySelectorAll('.tag-row-check').forEach(cb => { cb.checked = false; });
+        selectedForTagging.clear();
+        updateTagBar();
+    }
+
+    function renderTagChips(entity) {
+        const tags = currentEntityTags[entity] || [];
+        if (!tags.length) return '<span style="color: #adb5bd; font-size: 11px;">—</span>';
+        return tags.map(t =>
+            `<span title="${escUser(t.note || '')}${t.note ? ' — ' : ''}tagged by ${escUser(t.tagged_by)}"
+                   style="display: inline-block; margin: 1px; padding: 2px 8px; border-radius: 10px; background: ${escUser(t.color)}22; color: ${escUser(t.color)}; border: 1px solid ${escUser(t.color)}; font-size: 11px; font-weight: 600; cursor: help;">${escUser(t.tag_name)}</span>`
+        ).join('');
+    }
+
+    // This is the part that actually delivers "don't identify the same pattern
+    // twice": say up front that someone already looked at some of these.
+    function renderPriorWorkBanner() {
+        const el = document.getElementById('username-prior-work');
+        if (!el) return;
+        const tagged = Object.keys(currentEntityTags);
+        if (!tagged.length) { el.style.display = 'none'; return; }
+
+        const byTag = {};
+        tagged.forEach(e => (currentEntityTags[e] || []).forEach(t => {
+            byTag[t.tag_name] = byTag[t.tag_name] || { color: t.color, who: new Set(), n: 0, note: t.note };
+            byTag[t.tag_name].who.add(t.tagged_by);
+            byTag[t.tag_name].n++;
+        }));
+
+        el.innerHTML = `<strong>🏷️ Prior work:</strong> ${tagged.length} of these results ${tagged.length === 1 ? 'has' : 'have'} already been tagged.` +
+            `<div style="margin-top: 6px;">` +
+            Object.entries(byTag).map(([name, d]) =>
+                `<div style="margin: 3px 0;"><span style="display: inline-block; padding: 2px 9px; border-radius: 10px; background: ${escUser(d.color)}22; color: ${escUser(d.color)}; border: 1px solid ${escUser(d.color)}; font-size: 11px; font-weight: 600;">${escUser(name)}</span>
+                 <span style="color: #6c757d; font-size: 12px;"> ${d.n} result(s), by ${escUser(Array.from(d.who).join(', '))}${d.note ? ' — ' + escUser(d.note) : ''}</span></div>`
+            ).join('') + `</div>`;
+        el.style.display = 'block';
+    }
+
+    function renderBulkTagBar() {
+        return `
+            <div id="bulk-tag-bar" style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: #f8f9fa; border-bottom: 1px solid #dee2e6; opacity: 0.55;">
+                <span style="font-size: 13px; font-weight: 600;"><span id="bulk-tag-count">0</span> selected</span>
+                <select id="bulk-tag-select" style="padding: 5px 8px; border: 1px solid #ced4da; border-radius: 4px; font-size: 13px;">
+                    <option value="">Choose tag…</option>
+                    ${tagRepo.map(t => `<option value="${escUser(t.tag_name)}">${escUser(t.tag_name)}</option>`).join('')}
+                </select>
+                <input type="text" id="bulk-tag-note" maxlength="500" placeholder="Why? (optional note stored with this application)"
+                       style="flex: 1; padding: 5px 10px; border: 1px solid #ced4da; border-radius: 4px; font-size: 13px;">
+                <button id="bulk-tag-apply" onclick="applyBulkTag()" disabled
+                        style="padding: 6px 16px; background: #10b981; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500;">Apply tag</button>
+            </div>`;
+    }
+
     </script>
 
 </body>
