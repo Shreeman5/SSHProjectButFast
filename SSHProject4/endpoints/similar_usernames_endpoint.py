@@ -37,6 +37,12 @@ DIFFERENCES FROM similar_ips_endpoint.py -- all deliberate
 5. TWO-LEVEL AGGREGATION. daily_username_attacks is keyed
    (date, username, country, asn_name). Row-level AVG/MAX are fragment
    statistics, not daily ones -- off by ~1,680x for a username like 'root'.
+
+6. ASN ATTRIBUTION FOR DISPLAY ONLY. Each result carries its top ASNs
+   (`top_asns`). Like IP identity, ASN identity is not one of the nine
+   clustering features, so ASNs that recur across results are independent
+   evidence of shared infrastructure, not an artefact of the similarity metric.
+   Fetched for the final `limit` rows only, after ranking.
 --------------------------------------------------------------------------------
 """
 
@@ -73,6 +79,9 @@ OUTLIER_DISTANCE = 2.56
 
 # Below this, the best match is weak enough to be worth saying out loud.
 WEAK_MATCH_SIMILARITY = 40.0
+
+# How many ASNs to list per result (the full distinct count is unique_asns).
+TOP_ASNS_PER_USERNAME = 3
 
 
 def _top_of_concentration(s):
@@ -228,7 +237,6 @@ def register_similar_usernames(app):
             FROM agg a
             LEFT JOIN username_stability_metrics sm ON a.username = sm.username
         """, wanted).fetchall()
-        conn.close()
 
         detail = {r[0]: r for r in detail_rows}
         t = detail.get(target)
@@ -323,6 +331,73 @@ def register_similar_usernames(app):
         out.sort(key=lambda r: (-r['similarity'], -r['total_attacks']))
         out = out[:limit]
 
+        # The searched username itself, with the same display columns, so the
+        # page can show it as a reference row above the results. Not ranked and
+        # not part of `similar_usernames`.
+        target_out = None
+        if t:
+            target_out = {
+                'username': target,
+                'total_attacks': int(t_total),
+                'avg_daily': round(float(t[2]), 2) if t[2] else 0.0,
+                'max_daily': int(t[3]) if t[3] else 0,
+                'active_days': t[4] or 0,
+                'persistence_pct': round(t_pers, 1),
+                'first_seen': t[5],
+                'last_seen': t[6],
+                'unique_ips': int(t_uips) if t_uips else None,
+                'unique_countries': t[8],
+                'unique_asns': t[9],
+                'attacks_per_ip': round(t_per_ip, 1),
+                'ip_stability': round(float(t[10]), 3) if t[10] is not None else None,
+                'country_stability': round(float(t[11]), 3) if t[11] is not None else None,
+                'top_country': t_country,
+                'country_concentration': t[12],
+                'ip_concentration': t[13],
+            }
+
+        # ------------------------------------------------------------------
+        # 4b. Top ASNs -- display only, for the final rows. Ranking above is
+        #     already fixed; this never feeds back into similarity.
+        # ------------------------------------------------------------------
+        if out or target_out:
+            final_names = [r['username'] for r in out] + ([target] if target_out else [])
+            ph_final = ', '.join(['?'] * len(final_names))
+            asn_rows = conn.execute(f"""
+                WITH ua AS (
+                    SELECT username, asn_name, SUM(attacks) AS attacks
+                    FROM daily_username_attacks
+                    WHERE username IN ({ph_final})
+                    GROUP BY username, asn_name
+                ),
+                ranked AS (
+                    SELECT
+                        username, asn_name, attacks,
+                        100.0 * attacks / SUM(attacks) OVER (PARTITION BY username) AS pct,
+                        ROW_NUMBER() OVER (PARTITION BY username
+                                           ORDER BY attacks DESC, asn_name) AS rn
+                    FROM ua
+                )
+                SELECT username, asn_name, attacks, pct
+                FROM ranked
+                WHERE rn <= {TOP_ASNS_PER_USERNAME}
+                ORDER BY username, rn
+            """, final_names).fetchall()
+
+            top_asns = {}
+            for uname, asn, attacks, pct in asn_rows:
+                top_asns.setdefault(uname, []).append({
+                    'asn': asn,
+                    'attacks': int(attacks),
+                    'pct': round(float(pct), 1),
+                })
+            for r in out:
+                r['top_asns'] = top_asns.get(r['username'], [])
+            if target_out:
+                target_out['top_asns'] = top_asns.get(target, [])
+
+        conn.close()
+
         # ------------------------------------------------------------------
         # 5. Honesty about match quality
         # ------------------------------------------------------------------
@@ -359,6 +434,7 @@ def register_similar_usernames(app):
                 'weak_matches': bool(weak),
                 'note': note,
             },
+            'target': target_out,
             'similar_usernames': out,
             'total_in_cluster': len(members),
         })

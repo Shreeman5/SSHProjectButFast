@@ -941,6 +941,14 @@
     }
 
     // "178.88.161.82 (6.3%), 149.202.74.37 (4.2%)" -> [{ip, pct}, ...]
+    // How many similar usernames to fetch and show (the endpoint allows up to 200).
+    const SIMILAR_USERNAMES_LIMIT = 100;
+
+    // 'NONE' is the placeholder for IPs with no ASN data, not a real organisation.
+    function asnLabel(asn) {
+        return (asn === 'NONE' || asn == null || asn === '') ? 'Unknown ASN' : asn;
+    }
+
     function parseIpConcentration(str) {
         if (!str) return [];
         const out = [];
@@ -970,7 +978,7 @@
 
         try {
             const response = await fetch(
-                `${API_BASE}/api/find_similar_usernames?username=${encodeURIComponent(target)}&limit=20`
+                `${API_BASE}/api/find_similar_usernames?username=${encodeURIComponent(target)}&limit=${SIMILAR_USERNAMES_LIMIT}`
             );
             const data = await response.json();
 
@@ -1027,6 +1035,183 @@
         return reason;
     }
 
+    // ---- Similar-usernames table sorting ------------------------------------
+    // State for the table currently on screen, set by displaySimilarUsernameResults.
+    let similarUsernameView = null;
+
+    // First (largest-share) entry of each grouping column, or null when there is
+    // nothing meaningful to group on. Unknown ASNs are not a shared network.
+    function topIpKey(r) {
+        const e = parseIpConcentration(r.ip_concentration)[0];
+        return e ? { key: e.ip, pct: e.pct } : null;
+    }
+    function topAsnKey(r) {
+        const e = (r.top_asns || [])[0];
+        return (e && asnLabel(e.asn) !== 'Unknown ASN') ? { key: e.asn, pct: e.pct } : null;
+    }
+    function topCountryKey(r) {
+        return r.top_country ? { key: r.top_country, pct: 0 } : null;
+    }
+    const GROUP_KEYS = { ip: topIpKey, asn: topAsnKey, country: topCountryKey };
+
+    // Default direction for the first click on each column.
+    const DEFAULT_SORT_DIR = { rank: 1, username: 1, similarity: -1, total: -1, country: -1, ip: -1, asn: -1 };
+
+    function sortSimilarUsernames(key) {
+        if (!similarUsernameView) return;
+        const v = similarUsernameView;
+        if (v.sortKey === key) {
+            v.sortDir = -v.sortDir;
+        } else {
+            v.sortKey = key;
+            v.sortDir = DEFAULT_SORT_DIR[key] || 1;
+        }
+        renderSimilarUsernameTable();
+    }
+
+    function sortedSimilarRows(v) {
+        const rows = v.rows.slice();
+        const dir = v.sortDir;
+        const byRank = (a, b) => a._rank - b._rank;
+
+        if (v.sortKey === 'rank') return rows.sort((a, b) => dir * byRank(a, b));
+        if (v.sortKey === 'username') return rows.sort((a, b) => dir * String(a.username).localeCompare(String(b.username)) || byRank(a, b));
+        if (v.sortKey === 'similarity') return rows.sort((a, b) => dir * (a.similarity - b.similarity) || byRank(a, b));
+        if (v.sortKey === 'total') return rows.sort((a, b) => dir * (a.total_attacks - b.total_attacks) || byRank(a, b));
+
+        // Grouping sorts: rows sharing the same #1 IP / ASN / country sit together.
+        // Groups are ordered by size (how many results share it), then name; inside
+        // a group, by that entry's share of the username's attacks. Rows with
+        // nothing to group on always go last, in similarity order.
+        const keyOf = GROUP_KEYS[v.sortKey];
+        const size = {};
+        rows.forEach(r => { const k = keyOf(r); if (k) size[k.key] = (size[k.key] || 0) + 1; });
+        return rows.sort((a, b) => {
+            const ka = keyOf(a), kb = keyOf(b);
+            if (!ka || !kb) return (!ka - !kb) || byRank(a, b);
+            return dir * (size[ka.key] - size[kb.key])
+                || String(ka.key).localeCompare(String(kb.key))
+                || (kb.pct - ka.pct)
+                || byRank(a, b);
+        });
+    }
+
+    function renderSimilarUsernameTable() {
+        const v = similarUsernameView;
+        const container = document.getElementById('similar-usernames-table');
+        if (!v || !container) return;
+
+        const { ipCounts, asnCounts } = v;
+        const sorted = sortedSimilarRows(v);
+        const th = 'padding: 10px; border-bottom: 2px solid #dee2e6;';
+
+        const sortHeader = (key, label, align, tip) => {
+            const active = v.sortKey === key;
+            const arrow = active ? (v.sortDir > 0 ? ' ▲' : ' ▼') : '';
+            return `<th onclick="sortSimilarUsernames('${key}')" title="Sort: ${tip}"
+                        style="${th} text-align: ${align}; cursor: pointer; user-select: none; white-space: nowrap;${active ? ' color: #4c51bf;' : ''}">${label}${arrow}</th>`;
+        };
+
+        // In a grouping sort, draw a divider where one shared group ends and the next begins.
+        const keyOf = GROUP_KEYS[v.sortKey];
+        const groupStart = idx => {
+            if (!keyOf || idx === 0) return false;
+            const prev = keyOf(sorted[idx - 1]), cur = keyOf(sorted[idx]);
+            return (prev ? prev.key : null) !== (cur ? cur.key : null);
+        };
+
+        // One table row. The pinned target row reuses it: no rank or similarity,
+        // and its IPs/ASNs are highlighted when ANY result shares them (results
+        // are highlighted when at least one OTHER result shares them).
+        const rowHtml = (u, idx, isTarget) => {
+            const sharedMin = isTarget ? 0 : 1;
+                            const ips = parseIpConcentration(u.ip_concentration).slice(0, 3);
+            const ipCell = ips.length === 0
+                ? '<span style="color: #adb5bd;">N/A</span>'
+                : ips.map(e => {
+                    const isShared = ipCounts[e.ip] && ipCounts[e.ip].length > sharedMin;
+                    return `<div style="font-family: monospace; font-size: 11px; margin: 1px 0; ${
+                        isShared ? 'background: #fff3cd; font-weight: 700; padding: 1px 4px; border-radius: 3px;' : ''
+                    }" ${isShared ? `title="Also attacks: ${escUser(ipCounts[e.ip].filter(n => n !== u.username).join(', '))}"` : ''}>${escUser(e.ip)} <span style="color: #6c757d; font-weight: 400;">(${e.pct}%)</span></div>`;
+                  }).join('');
+
+            const asns = u.top_asns || [];
+            const asnCell = asns.length === 0
+                ? '<span style="color: #adb5bd;">N/A</span>'
+                : asns.map(e => {
+                    const label = asnLabel(e.asn);
+                    const isUnknown = label === 'Unknown ASN';
+                    const isShared = !isUnknown && asnCounts[e.asn] && asnCounts[e.asn].length > sharedMin;
+                    const short = label.length > 28 ? label.slice(0, 27) + '…' : label;
+                    const title = isShared
+                        ? `${label} -- also a top source for: ${asnCounts[e.asn].filter(n => n !== u.username).join(', ')}`
+                        : label;
+                    return `<div style="font-size: 11px; margin: 1px 0; white-space: nowrap; ${
+                        isShared ? 'background: #dbeafe; font-weight: 700; padding: 1px 4px; border-radius: 3px;' : ''
+                    }${isUnknown ? 'font-style: italic; color: #6c757d;' : ''}" title="${escUser(title)}">${escUser(short)} <span style="color: #6c757d; font-weight: 400;">(${e.pct}%)</span></div>`;
+                  }).join('');
+
+            const uname = escUser(u.username) ||
+                '<em style="color:#6c757d;">(empty)</em>';
+
+            return `
+            <tr style="${isTarget
+                ? 'background: #ede9fe; border-bottom: 3px solid #7c3aed;'
+                : `border-bottom: 1px solid #dee2e6; ${idx % 2 === 0 ? 'background: #f8f9fa;' : ''}${groupStart(idx) ? ' border-top: 2px solid #6c757d;' : ''}`}">
+                <td style="padding: 10px; text-align: center; vertical-align: top;">
+                    <input type="checkbox" class="tag-row-check" data-entity="${escUser(u.username)}"
+                           onchange="toggleTagSelection(this.getAttribute('data-entity'))" style="cursor: pointer;" ${selectedForTagging.has(u.username) ? 'checked' : ''}>
+                </td>
+                <td style="padding: 10px; vertical-align: top;">${isTarget ? '<span style="color: #6c757d;">—</span>' : u._rank}</td>
+                <td style="padding: 10px; font-family: monospace; font-weight: ${isTarget ? 700 : 500}; vertical-align: top;">${uname}</td>
+                <td style="padding: 10px; text-align: center; vertical-align: top;">${isTarget
+                    ? '<span style="display: inline-block; padding: 4px 8px; background: #7c3aed; color: white; border-radius: 4px; font-weight: 600;">Searched</span>'
+                    : `<span style="display: inline-block; padding: 4px 8px; background: ${getSimilarityColor(u.similarity)}; color: white; border-radius: 4px; font-weight: 600;">
+                        ${u.similarity}%
+                    </span>`}
+                </td>
+                <td style="padding: 10px; text-align: right; vertical-align: top;">
+                    ${formatNumber(u.total_attacks)}
+                    <div style="font-size: 11px; color: #6c757d;">${u.unique_ips != null ? formatNumber(u.unique_ips) + ' IPs' : ''}</div>
+                    <div style="font-size: 11px; color: #6c757d;">${u.unique_asns != null ? formatNumber(u.unique_asns) + ' ASes' : ''}</div>
+                </td>
+                <td style="padding: 10px; vertical-align: top;">${escUser(u.top_country) || 'N/A'}</td>
+                <td style="padding: 10px; vertical-align: top;">${ipCell}</td>
+                <td style="padding: 10px; vertical-align: top;">${asnCell}</td>
+                <td style="padding: 10px; font-size: 13px; vertical-align: top;">
+                    ${isTarget
+                        ? '<span style="font-size: 12px; color: #5b21b6;">Reference row: the username you searched. Highlights show which of its top IPs/ASNs also appear in the results.</span>'
+                        : u.reasons.map(r => `<span title="${escUser(getUsernameReasonTooltip(r))}" style="display: inline-block; margin: 2px; padding: 2px 6px; background: #e7f3ff; color: #004085; border-radius: 3px; font-size: 11px; cursor: help;">${escUser(r)}</span>`).join('')}
+                </td>
+                <td style="padding: 10px; vertical-align: top;" data-tagcell="${escUser(u.username)}">${renderTagChips(u.username)}</td>
+            </tr>`;
+        };
+
+        container.innerHTML = `
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead style="background: #f8f9fa;">
+                        <tr>
+                            <th style="${th} text-align: center; width: 30px;"><input type="checkbox" onchange="toggleAllTagSelection(this.checked)" title="Select all" style="cursor: pointer;"></th>
+                            ${sortHeader('rank', 'Rank', 'left', 'Similarity rank (original order)')}
+                            ${sortHeader('username', 'Username', 'left', 'Alphabetical')}
+                            ${sortHeader('similarity', 'Similarity', 'center', 'Similarity score')}
+                            ${sortHeader('total', 'Total Attacks', 'right', 'Total attacks')}
+                            ${sortHeader('country', 'Top Source', 'left', 'Group by top country, largest group first')}
+                            ${sortHeader('ip', 'Top IPs', 'left', 'Group usernames that share the same #1 IP, most shared first')}
+                            ${sortHeader('asn', 'Top ASNs', 'left', 'Group usernames that share the same #1 ASN, most shared first')}
+                            <th style="${th} text-align: left;">Why Similar?</th>
+                            <th style="${th} text-align: left;">Tags</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${v.target ? rowHtml(v.target, -1, true) : ''}
+                        ${sorted.map((u, idx) => rowHtml(u, idx, false)).join('')}
+                    </tbody>
+                </table>
+        `;
+        updateTagBar();
+    }
+
     async function displaySimilarUsernameResults(data) {
         const resultsDiv = document.getElementById('similar-username-results');
         const clusterDiv = document.getElementById('username-cluster-info');
@@ -1063,7 +1248,9 @@
         // Fetch existing tags for everything on screen before rendering, so the
         // prior-work banner and the chips appear together rather than popping in.
         selectedForTagging.clear();
-        currentEntityTags = await fetchTagsForEntities(rows.map(r => r.username));
+        currentEntityTags = await fetchTagsForEntities(
+            rows.map(r => r.username).concat(data.target ? [data.target.username] : [])
+        );
 
         if (rows.length === 0) {
             sharedDiv.style.display = 'none';
@@ -1085,90 +1272,69 @@
                 (ipCounts[e.ip] = ipCounts[e.ip] || []).push(r.username);
             });
         });
-        const shared = Object.keys(ipCounts).filter(ip => ipCounts[ip].length > 1);
+        // Same idea for ASNs: ASN identity is not a clustering feature either, so
+        // an ASN among the top sources of several results is independent evidence.
+        // Unknown ASNs are left out -- 'NONE' recurring would mean nothing.
+        const asnCounts = {};
+        rows.forEach(r => {
+            (r.top_asns || []).forEach(e => {
+                if (asnLabel(e.asn) === 'Unknown ASN') return;
+                (asnCounts[e.asn] = asnCounts[e.asn] || []).push(r.username);
+            });
+        });
+        const byReach = counts => Object.keys(counts)
+            .filter(k => counts[k].length > 1)
+            .sort((a, b) => counts[b].length - counts[a].length);
+        const shared = byReach(ipCounts);
+        const sharedAsns = byReach(asnCounts);
 
-        if (shared.length > 0) {
-            sharedDiv.innerHTML =
-                `<strong>🧲 Shared infrastructure:</strong> ` +
-                `${shared.length} IP${shared.length > 1 ? 's' : ''} appear in the top attackers of more than one result. ` +
-                `Highlighted below.` +
-                `<div style="margin-top: 8px; font-family: monospace; font-size: 12px;">` +
-                shared.slice(0, 6).map(ip =>
-                    `<div style="margin: 2px 0;"><strong>${escUser(ip)}</strong> → ${ipCounts[ip].map(u => escUser(u)).join(', ')}</div>`
-                ).join('') +
-                (shared.length > 6 ? `<div style="margin-top: 4px; opacity: 0.7;">…and ${shared.length - 6} more</div>` : '') +
-                `</div>`;
+        // With 100 rows one entry can cover dozens of usernames, so cap each line.
+        const sharedLine = (label, users) => {
+            const shown = users.slice(0, 8).map(u => escUser(u)).join(', ');
+            const more = users.length > 8 ? ` <span style="opacity: 0.7;">+${users.length - 8} more</span>` : '';
+            return `<div style="margin: 2px 0;"><strong>${escUser(label)}</strong> → ` +
+                   `<span style="opacity: 0.8;">${users.length} of ${rows.length} usernames:</span> ${shown}${more}</div>`;
+        };
+        const sharedBlock = (keys, counts) =>
+            `<div style="margin-top: 6px; font-family: monospace; font-size: 12px;">` +
+            keys.slice(0, 6).map(k => sharedLine(k, counts[k])).join('') +
+            (keys.length > 6 ? `<div style="margin-top: 4px; opacity: 0.7;">…and ${keys.length - 6} more</div>` : '') +
+            `</div>`;
+
+        if (shared.length > 0 || sharedAsns.length > 0) {
+            let html = `<strong>🧲 Shared infrastructure:</strong> `;
+            if (shared.length > 0) {
+                html += `${shared.length} IP${shared.length > 1 ? 's' : ''} appear in the top attackers of more than one result (highlighted yellow).` +
+                        sharedBlock(shared, ipCounts);
+            }
+            if (sharedAsns.length > 0) {
+                html += `<div style="margin-top: ${shared.length > 0 ? '10px' : '0'};">` +
+                        `${sharedAsns.length} ASN${sharedAsns.length > 1 ? 's' : ''} appear among the top sources of more than one result (highlighted blue).</div>` +
+                        sharedBlock(sharedAsns, asnCounts);
+            }
+            sharedDiv.innerHTML = html;
             sharedDiv.style.display = 'block';
         } else {
             sharedDiv.style.display = 'none';
         }
 
         // ---- results table ----------------------------------------------------
-        const th = 'padding: 10px; border-bottom: 2px solid #dee2e6;';
+        // The table lives in its own container so re-sorting repaints only the
+        // rows, not the bulk-tag bar (which would lose a chosen tag or typed note).
+        rows.forEach((r, i) => { r._rank = i + 1; });  // similarity rank, shown whatever the sort
+        similarUsernameView = { rows, target: data.target || null, ipCounts, asnCounts, sortKey: 'rank', sortDir: 1 };
+
         listDiv.innerHTML = `
             <div style="background: white; border-radius: 4px; overflow: hidden; border: 1px solid #dee2e6;">
                 <div style="padding: 12px; background: #f8f9fa; border-bottom: 1px solid #dee2e6; font-weight: 600;">
                     Found ${data.total_in_cluster.toLocaleString()} Similar Usernames (showing top ${rows.length})
+                    <span style="font-weight: 400; font-size: 12px; color: #6c757d; margin-left: 8px;">Click a column header to sort</span>
                 </div>
                 ${renderBulkTagBar()}
-                <table style="width: 100%; border-collapse: collapse;">
-                    <thead style="background: #f8f9fa;">
-                        <tr>
-                            <th style="${th} text-align: center; width: 30px;"><input type="checkbox" onchange="toggleAllTagSelection(this.checked)" title="Select all" style="cursor: pointer;"></th>
-                            <th style="${th} text-align: left;">Rank</th>
-                            <th style="${th} text-align: left;">Username</th>
-                            <th style="${th} text-align: center;">Similarity</th>
-                            <th style="${th} text-align: right;">Total Attacks</th>
-                            <th style="${th} text-align: left;">Top Source</th>
-                            <th style="${th} text-align: left;">Top IPs</th>
-                            <th style="${th} text-align: left;">Why Similar?</th>
-                            <th style="${th} text-align: left;">Tags</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${rows.map((u, idx) => {
-                            const ips = parseIpConcentration(u.ip_concentration).slice(0, 3);
-                            const ipCell = ips.length === 0
-                                ? '<span style="color: #adb5bd;">N/A</span>'
-                                : ips.map(e => {
-                                    const isShared = ipCounts[e.ip] && ipCounts[e.ip].length > 1;
-                                    return `<div style="font-family: monospace; font-size: 11px; margin: 1px 0; ${
-                                        isShared ? 'background: #fff3cd; font-weight: 700; padding: 1px 4px; border-radius: 3px;' : ''
-                                    }" ${isShared ? `title="Also attacks: ${escUser(ipCounts[e.ip].filter(n => n !== u.username).join(', '))}"` : ''}>${escUser(e.ip)} <span style="color: #6c757d; font-weight: 400;">(${e.pct}%)</span></div>`;
-                                  }).join('');
-
-                            const uname = escUser(u.username) ||
-                                '<em style="color:#6c757d;">(empty)</em>';
-
-                            return `
-                            <tr style="border-bottom: 1px solid #dee2e6; ${idx % 2 === 0 ? 'background: #f8f9fa;' : ''}">
-                                <td style="padding: 10px; text-align: center; vertical-align: top;">
-                                    <input type="checkbox" class="tag-row-check" data-entity="${escUser(u.username)}"
-                                           onchange="toggleTagSelection(this.getAttribute('data-entity'))" style="cursor: pointer;">
-                                </td>
-                                <td style="padding: 10px; vertical-align: top;">${idx + 1}</td>
-                                <td style="padding: 10px; font-family: monospace; font-weight: 500; vertical-align: top;">${uname}</td>
-                                <td style="padding: 10px; text-align: center; vertical-align: top;">
-                                    <span style="display: inline-block; padding: 4px 8px; background: ${getSimilarityColor(u.similarity)}; color: white; border-radius: 4px; font-weight: 600;">
-                                        ${u.similarity}%
-                                    </span>
-                                </td>
-                                <td style="padding: 10px; text-align: right; vertical-align: top;">
-                                    ${formatNumber(u.total_attacks)}
-                                    <div style="font-size: 11px; color: #6c757d;">${u.unique_ips != null ? formatNumber(u.unique_ips) + ' IPs' : ''}</div>
-                                </td>
-                                <td style="padding: 10px; vertical-align: top;">${escUser(u.top_country) || 'N/A'}</td>
-                                <td style="padding: 10px; vertical-align: top;">${ipCell}</td>
-                                <td style="padding: 10px; font-size: 13px; vertical-align: top;">
-                                    ${u.reasons.map(r => `<span title="${escUser(getUsernameReasonTooltip(r))}" style="display: inline-block; margin: 2px; padding: 2px 6px; background: #e7f3ff; color: #004085; border-radius: 3px; font-size: 11px; cursor: help;">${escUser(r)}</span>`).join('')}
-                                </td>
-                                <td style="padding: 10px; vertical-align: top;" data-tagcell="${escUser(u.username)}">${renderTagChips(u.username)}</td>
-                            </tr>`;
-                        }).join('')}
-                    </tbody>
-                </table>
+                <div id="similar-usernames-table"></div>
             </div>
         `;
+        renderSimilarUsernameTable();
 
         renderPriorWorkBanner();
         updateTagBar();
@@ -1451,6 +1617,21 @@
         document.getElementById('bulk-tag-count').textContent = n;
         bar.style.opacity = n ? '1' : '0.55';
         document.getElementById('bulk-tag-apply').disabled = n === 0;
+        const analyzeBtn = document.getElementById('bulk-analyze');
+        if (analyzeBtn) analyzeBtn.disabled = n === 0;
+    }
+
+    // Same hand-off as the Usernames tab's "Analyze Selected": open the dashboard
+    // in username discovery mode (|||-separated, since usernames can contain commas).
+    function analyzeSelectedUsernames() {
+        // The empty username can't be passed as a filter (the dashboard and API
+        // both treat an empty list item as "nothing"), so it is left out.
+        const usernames = Array.from(selectedForTagging).filter(u => u !== '');
+        if (usernames.length === 0) {
+            alert('Select at least one username to analyze.');
+            return;
+        }
+        window.open(`dashboard.html?usernames=${encodeURIComponent(usernames.join('|||'))}`, '_blank');
     }
 
     async function applyBulkTag() {
@@ -1547,6 +1728,9 @@
                        style="flex: 1; padding: 5px 10px; border: 1px solid #ced4da; border-radius: 4px; font-size: 13px;">
                 <button id="bulk-tag-apply" onclick="applyBulkTag()" disabled
                         style="padding: 6px 16px; background: #10b981; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500;">Apply tag</button>
+                <button id="bulk-analyze" onclick="analyzeSelectedUsernames()" disabled
+                        title="Open the dashboard filtered to the selected usernames. Totals, countries, ASNs and IPs cover all of them; the Usernames chart shows the top 10."
+                        style="padding: 6px 16px; background: #4c51bf; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500; white-space: nowrap;">📊 Analyze selected</button>
             </div>`;
     }
 
