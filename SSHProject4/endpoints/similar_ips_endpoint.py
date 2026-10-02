@@ -1,11 +1,41 @@
 """
 Similar IPs Endpoint - CLUSTERING-BASED
 Finds IPs similar to a given target IP using pre-computed clusters
+
+Two kinds of similarity:
+
+  * Behavioural (`similarity`): distance between the 17 clustering features,
+    searched within the target's cluster. Unchanged.
+  * Username (`username_similarity`): TF-IDF weighted cosine overlap of the
+    usernames two IPs try (utils/username_similarity.py). Added as a column to
+    the behavioural results, and searchable across ALL IPs via
+    /api/find_ips_by_usernames -- which is how IPs from unrelated clusters,
+    ASNs and countries that share a username list are found.
 """
 
 from flask import jsonify, request
 from utils.db import get_db
+from utils import username_similarity as usim
 import numpy as np
+
+# The 17 clustering features, in ip_clusters column order.
+FEATURE_COLS = [
+    'f1_log_total_attacks', 'f2_log_avg_daily', 'f3_log_max_daily', 'f4_persistence_pct',
+    'f5_burst_intensity', 'f6_log_max_abs_change', 'f7_max_pct_change',
+    'f8_username_stability', 'f9_username_rotation', 'f10_log_unique_usernames',
+    'f11_username_top1_pct', 'f12_trend_slope', 'f13_is_cloud_asn', 'f14_is_major_country',
+    'f15_log_activity_span', 'f16_recency_ratio', 'f17_log_recent_attacks',
+]
+
+# Same scale as the behavioural score in find_similar_ips, so the two agree.
+BEHAVIOUR_MAX_DISTANCE = 4.1
+
+USERNAME_SEARCH_DEFAULT = 50
+USERNAME_SEARCH_MAX = 200
+
+
+def _behavioural_similarity(a, b):
+    return round(max(0.0, 100 - (float(np.linalg.norm(a - b)) / BEHAVIOUR_MAX_DISTANCE) * 100), 1)
 
 
 def register_similar_ips(app):
@@ -232,6 +262,31 @@ def register_similar_ips(app):
         # Sort by similarity (highest first)
         similar_ips.sort(key=lambda x: x['similarity'], reverse=True)
         
+        top = similar_ips[:limit]
+
+        # Step 3b: Username similarity to the target, for the rows returned.
+        # Display only; the behavioural ranking above is unchanged.
+        username_ready = usim.tables_ready(conn)
+        if username_ready:
+            u_sims = usim.similarity_to(conn, target_ip, [r['ip'] for r in top])
+            for r in top:
+                r.update(u_sims[r['ip']])
+
+        # The searched IP itself, shown as a pinned reference row above the results.
+        t_total = conn.execute("SELECT SUM(attacks) FROM daily_ip_attacks WHERE IP = ?", [target_ip]).fetchone()[0]
+        target_out = {
+            'ip': target_ip,
+            'country': target_country,
+            'asn_name': target_asn,
+            'cluster_id': cluster_id,
+            'total_attacks': int(t_total) if t_total is not None else None,
+        }
+        if username_ready:
+            t_prof = usim.target_profile(conn, target_ip)
+            target_out['weighted_usernames'] = t_prof[1] if t_prof else 0
+            target_out['distinctive_usernames'] = usim.distinctive_count(conn, target_ip)
+            target_out.update(usim.own_usernames(conn, target_ip))
+
         # Step 4: Prepare response
         response = {
             'target_ip': target_ip,
@@ -242,14 +297,119 @@ def register_similar_ips(app):
                 'cluster_size': target_result[21],
                 'distance_from_centroid': round(target_result[1], 3)
             },
-            'similar_ips': similar_ips[:limit],
-            'total_in_cluster': len(similar_ips)
+            'similar_ips': top,
+            'total_in_cluster': len(similar_ips),
+            'target': target_out,
+            'username_similarity_available': username_ready,
         }
         
         conn.close()
         
         return jsonify(response)
     
+    @app.route('/api/find_ips_by_usernames', methods=['GET'])
+    def find_ips_by_usernames():
+        """IPs across ALL clusters whose username lists most resemble the target's."""
+        target_ip = request.args.get('ip')
+        limit = request.args.get('limit', type=int, default=USERNAME_SEARCH_DEFAULT)
+        # On unless explicitly turned off: drop matches that share only common usernames.
+        require_distinctive = request.args.get('require_distinctive', '1') not in ('0', 'false', 'no')
+        if not target_ip:
+            return jsonify({'error': 'Missing ip parameter'}), 400
+        limit = max(1, min(limit, USERNAME_SEARCH_MAX))
+
+        conn = get_db()
+        if not usim.tables_ready(conn):
+            conn.close()
+            return jsonify({'error': usim.NOT_READY_MESSAGE, 'reason': 'not_built'}), 503
+
+        found = usim.search(conn, target_ip, limit, require_distinctive)
+        if found is None:
+            conn.close()
+            return jsonify({
+                'error': f'IP {target_ip} has no distinctive usernames to compare.',
+                'reason': 'no_usernames',
+                'detail': 'Either it has no username data, or it only tried usernames '
+                          'that every IP tries, which carry no weight.'
+            }), 404
+
+        ips = [f[0] for f in found]
+        shared = usim.similarity_to(conn, target_ip, ips)
+        everyone = ips + [target_ip]
+        ph = ', '.join(['?'] * len(everyone))
+
+        meta = {r[0]: r for r in conn.execute(f"""
+            SELECT IP,
+                   SUM(attacks) AS total_attacks,
+                   MODE() WITHIN GROUP (ORDER BY country) AS country,
+                   MODE() WITHIN GROUP (ORDER BY asn_name) AS asn_name
+            FROM daily_ip_attacks
+            WHERE IP IN ({ph})
+            GROUP BY IP
+        """, everyone).fetchall()}
+
+        feats = {r[0]: (r[1], np.array(r[2:], dtype=float)) for r in conn.execute(f"""
+            SELECT ip, cluster_id, {', '.join(FEATURE_COLS)}
+            FROM ip_clusters WHERE ip IN ({ph})
+        """, everyone).fetchall()}
+
+        t_norm = usim.target_profile(conn, target_ip)
+        t_distinctive = usim.distinctive_count(conn, target_ip)
+        t_own = usim.own_usernames(conn, target_ip)
+        conn.close()
+
+        t_meta = meta.get(target_ip)
+        t_country = t_meta[2] if t_meta else None
+        t_asn = t_meta[3] if t_meta else None
+        t_cluster, t_vec = feats.get(target_ip, (None, None))
+
+        results = []
+        for ip, u_sim, n_usernames in found:
+            m = meta.get(ip)
+            country = m[2] if m else None
+            asn = m[3] if m else None
+            cluster, vec = feats.get(ip, (None, None))
+            results.append({
+                'ip': ip,
+                'username_similarity': u_sim,
+                'shared_username_count': shared[ip]['shared_username_count'],
+                'distinctive_shared_count': shared[ip]['distinctive_shared_count'],
+                'shared_usernames': shared[ip]['shared_usernames'],
+                'rare_shared_usernames': shared[ip]['rare_shared_usernames'],
+                'weighted_usernames': n_usernames,
+                'total_attacks': int(m[1]) if m else None,
+                'country': country,
+                'asn_name': asn,
+                'cluster_id': cluster,
+                # Behavioural similarity across clusters too, on the same scale
+                # as find_similar_ips. High username + low behavioural overlap
+                # is the interesting combination.
+                'similarity': (_behavioural_similarity(t_vec, vec)
+                               if t_vec is not None and vec is not None else None),
+                'same_cluster': cluster is not None and cluster == t_cluster,
+                'different_asn': bool(asn and t_asn and asn != t_asn),
+                'different_country': bool(country and t_country and country != t_country),
+            })
+
+        return jsonify({
+            'target_ip': target_ip,
+            'target': {
+                'ip': target_ip,
+                'country': t_country,
+                'asn_name': t_asn,
+                'cluster_id': t_cluster,
+                'total_attacks': int(t_meta[1]) if t_meta else None,
+                'weighted_usernames': t_norm[1] if t_norm else 0,
+                'distinctive_usernames': t_distinctive,
+                **t_own,
+            },
+            'filters': {
+                'require_distinctive': require_distinctive,
+                'distinctive_max_share_pct': usim.DISTINCTIVE_MAX_SHARE * 100,
+            },
+            'results': results,
+        })
+
     @app.route('/api/cluster_info/<int:cluster_id>', methods=['GET'])
     def get_cluster_info(cluster_id):
         """Get detailed information about a specific cluster"""

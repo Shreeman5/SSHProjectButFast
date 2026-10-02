@@ -109,6 +109,20 @@
                 Clear
             </button>
         </div>
+        <div style="display: flex; align-items: center; gap: 6px; font-size: 13px;">
+            <span style="color: #6c757d; min-width: 120px;">Find by:</span>
+            <button class="ip-sim-mode" data-mode="behaviour" onclick="setSimilarIPMode('behaviour')"
+                    title="Behavioural neighbours: IPs in the same cluster with the closest attack behaviour"
+                    style="padding: 4px 12px; border-radius: 14px; cursor: pointer; font-size: 12px;">Behaviour (same cluster)</button>
+            <button class="ip-sim-mode" data-mode="usernames" onclick="setSimilarIPMode('usernames')"
+                    title="Search ALL IPs, regardless of cluster, ASN or country, for the most similar username lists"
+                    style="padding: 4px 12px; border-radius: 14px; cursor: pointer; font-size: 12px;">Shared usernames (all IPs)</button>
+            <label id="require-rare-label" style="display: none; margin-left: 12px; font-size: 12px; color: #374151; cursor: pointer;"
+                   title="Two IPs that only try common usernames (root, admin, test...) can score near 100% while sharing nothing distinctive. This keeps only IPs that share at least one rare username with the searched IP.">
+                <input type="checkbox" id="require-rare-toggle" checked onchange="onRequireRareChange()" style="vertical-align: middle;">
+                Only IPs sharing a rare username (tried by &lt;1% of IPs)
+            </label>
+        </div>
         
         <!-- Results container -->
         <div id="similar-results" style="display: none;">
@@ -476,6 +490,39 @@
     <script>
     // Similar IPs Search Functions
     
+    // Two ways to find related IPs:
+    //   behaviour -- /api/find_similar_ips: nearest neighbours within the target's
+    //                behavioural cluster (the original search)
+    //   usernames -- /api/find_ips_by_usernames: ALL IPs ranked by how similar their
+    //                username lists are (TF-IDF weighted cosine), whatever their
+    //                cluster, ASN or country
+    // Both show both scores, and both tables sort on any column.
+    const SIMILAR_IPS_LIMIT = 20;
+    const USERNAME_MATCH_LIMIT = 50;
+    let similarIPMode = 'behaviour';
+    let similarIPView = null;
+
+    function paintSimilarIPModeButtons() {
+        document.querySelectorAll('.ip-sim-mode').forEach(btn => {
+            const active = btn.getAttribute('data-mode') === similarIPMode;
+            btn.style.background = active ? '#4c51bf' : 'white';
+            btn.style.color = active ? 'white' : '#4c51bf';
+            btn.style.border = '1px solid #4c51bf';
+        });
+        const rareLabel = document.getElementById('require-rare-label');
+        if (rareLabel) rareLabel.style.display = similarIPMode === 'usernames' ? 'inline-block' : 'none';
+    }
+
+    function onRequireRareChange() {
+        if (similarIPMode === 'usernames' && document.getElementById('similar-ip-input').value.trim()) findSimilarIPs();
+    }
+
+    function setSimilarIPMode(mode) {
+        similarIPMode = mode;
+        paintSimilarIPModeButtons();
+        if (document.getElementById('similar-ip-input').value.trim()) findSimilarIPs();
+    }
+
     async function findSimilarIPs() {
         const input = document.getElementById('similar-ip-input');
         const targetIP = input.value.trim();
@@ -494,16 +541,21 @@
         btn.textContent = 'Searching...';
         btn.disabled = true;
         
+        const mode = similarIPMode;
+        const url = mode === 'usernames'
+            ? `${API_BASE}/api/find_ips_by_usernames?ip=${encodeURIComponent(targetIP)}&limit=${USERNAME_MATCH_LIMIT}` +
+              `&require_distinctive=${document.getElementById('require-rare-toggle').checked ? 1 : 0}`
+            : `${API_BASE}/api/find_similar_ips?ip=${encodeURIComponent(targetIP)}&limit=${SIMILAR_IPS_LIMIT}`;
+        
         try {
-            const response = await fetch(`${API_BASE}/api/find_similar_ips?ip=${encodeURIComponent(targetIP)}&limit=20`);
+            const response = await fetch(url);
+            const data = await response.json();
             
             if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.error || 'Failed to find similar IPs');
+                throw new Error([data.error || 'Failed to find similar IPs', data.detail].filter(Boolean).join(' '));
             }
             
-            const data = await response.json();
-            displaySimilarResults(data);
+            displaySimilarResults(data, mode);
             
             // Show clear button
             document.getElementById('clear-similar-btn').style.display = 'inline-block';
@@ -535,71 +587,294 @@
         return reason; // Fallback
     }
     
-    function displaySimilarResults(data) {
+    function getUsernameMatchTooltip(flag) {
+        return {
+            'Different ASN': 'Not in the searched IP\'s network/organisation',
+            'Different country': 'Not in the searched IP\'s country',
+            'Other cluster': 'In a different behavioural cluster: the behavioural search would never list it',
+            'Same cluster': 'Also in the searched IP\'s behavioural cluster',
+        }[flag] || flag;
+    }
+
+    function displaySimilarResults(data, mode) {
         const resultsDiv = document.getElementById('similar-results');
         const clusterDiv = document.getElementById('cluster-info');
         const listDiv = document.getElementById('similar-ips-list');
         
-        // Show cluster profile
-        clusterDiv.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                    <strong style="font-size: 16px;">${data.cluster.profile_name}</strong>
-                    <div style="color: #6c757d; font-size: 14px; margin-top: 4px;">${data.cluster.profile_description}</div>
-                </div>
-                <div style="text-align: right;">
-                    <div style="font-size: 14px; color: #6c757d;">Cluster ${data.cluster.cluster_id}</div>
-                    <div style="font-size: 14px; color: #6c757d;">${data.cluster.cluster_size.toLocaleString()} IPs in this pattern</div>
-                </div>
-            </div>
-        `;
-        
-        // Show similar IPs
-        if (data.similar_ips.length === 0) {
-            listDiv.innerHTML = '<div style="padding: 20px; text-align: center; color: #6c757d;">No similar IPs found in this cluster.</div>';
-        } else {
-            const tableHTML = `
-                <div style="background: white; border-radius: 4px; overflow: hidden; border: 1px solid #dee2e6;">
-                    <div style="padding: 12px; background: #f8f9fa; border-bottom: 1px solid #dee2e6; font-weight: 600;">
-                        Found ${data.similar_ips.length} Similar IPs (showing top 20)
+        let rows, heading;
+        if (mode === 'usernames') {
+            const t = data.target || {};
+            clusterDiv.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 20px;">
+                    <div>
+                        <strong style="font-size: 16px;">IPs that try the same usernames as ${escUser(data.target_ip)}</strong>
+                        <div style="color: #6c757d; font-size: 13px; margin-top: 4px;">
+                            Searched across all IPs, regardless of cluster, ASN or country. Username similarity is the
+                            cosine overlap of the two IPs' username lists, weighted so that rare usernames count far more
+                            than common ones (a username every IP tries, like <code>root</code>, counts for nothing).
+                        </div>
                     </div>
-                    <table style="width: 100%; border-collapse: collapse;">
-                        <thead style="background: #f8f9fa;">
-                            <tr>
-                                <th style="padding: 10px; text-align: left; border-bottom: 2px solid #dee2e6;">Rank</th>
-                                <th style="padding: 10px; text-align: left; border-bottom: 2px solid #dee2e6;">IP Address</th>
-                                <th style="padding: 10px; text-align: center; border-bottom: 2px solid #dee2e6;">Similarity</th>
-                                <th style="padding: 10px; text-align: right; border-bottom: 2px solid #dee2e6;">Total Attacks</th>
-                                <th style="padding: 10px; text-align: left; border-bottom: 2px solid #dee2e6;">Country</th>
-                                <th style="padding: 10px; text-align: left; border-bottom: 2px solid #dee2e6;">Why Similar?</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${data.similar_ips.map((ip, idx) => `
-                                <tr style="border-bottom: 1px solid #dee2e6; ${idx % 2 === 0 ? 'background: #f8f9fa;' : ''}">
-                                    <td style="padding: 10px;">${idx + 1}</td>
-                                    <td style="padding: 10px; font-family: monospace; font-weight: 500;">${ip.ip}</td>
-                                    <td style="padding: 10px; text-align: center;">
-                                        <span style="display: inline-block; padding: 4px 8px; background: ${getSimilarityColor(ip.similarity)}; color: white; border-radius: 4px; font-weight: 600;">
-                                            ${ip.similarity}%
-                                        </span>
-                                    </td>
-                                    <td style="padding: 10px; text-align: right;">${formatNumber(ip.total_attacks)}</td>
-                                    <td style="padding: 10px;">${ip.country || 'N/A'}</td>
-                                    <td style="padding: 10px; font-size: 13px;">
-                                        ${ip.reasons.map(r => `<span title="${getReasonTooltip(r)}" style="display: inline-block; margin: 2px; padding: 2px 6px; background: #e7f3ff; color: #004085; border-radius: 3px; font-size: 11px; cursor: help;">${r}</span>`).join('')}
-                                    </td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
+                    <div style="text-align: right; white-space: nowrap; font-size: 13px; color: #6c757d;">
+                        <div>${escUser(t.asn_name) || 'Unknown ASN'}</div>
+                        <div>${escUser(t.country) || 'Unknown country'}${t.cluster_id != null ? ` · cluster ${t.cluster_id}` : ''}</div>
+                        <div>${(t.weighted_usernames || 0).toLocaleString()} usernames, ${(t.distinctive_usernames || 0).toLocaleString()} of them rare</div>
+                    </div>
                 </div>
             `;
-            
-            listDiv.innerHTML = tableHTML;
+            rows = data.results || [];
+            rows.forEach(r => {
+                r.reasons = [];
+                if (r.different_asn) r.reasons.push('Different ASN');
+                if (r.different_country) r.reasons.push('Different country');
+                r.reasons.push(r.same_cluster ? 'Same cluster' : 'Other cluster');
+            });
+            const rareOn = data.filters && data.filters.require_distinctive;
+            heading = `Top ${rows.length} IPs by shared usernames, across all IPs` +
+                      (rareOn ? ' · sharing at least one rare username' : ' · rare-username filter off');
+        } else {
+            // Show cluster profile
+            clusterDiv.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <strong style="font-size: 16px;">${escUser(data.cluster.profile_name)}</strong>
+                        <div style="color: #6c757d; font-size: 14px; margin-top: 4px;">${escUser(data.cluster.profile_description)}</div>
+                    </div>
+                    <div style="text-align: right;">
+                        <div style="font-size: 14px; color: #6c757d;">Cluster ${data.cluster.cluster_id}</div>
+                        <div style="font-size: 14px; color: #6c757d;">${data.cluster.cluster_size.toLocaleString()} IPs in this pattern</div>
+                    </div>
+                </div>
+            `;
+            rows = data.similar_ips || [];
+            heading = `Found ${(data.total_in_cluster || rows.length).toLocaleString()} IPs in this cluster (showing top ${rows.length})`;
         }
         
+        if (rows.length === 0) {
+            let msg = 'No similar IPs found.';
+            if (mode === 'usernames' && data.filters && data.filters.require_distinctive) {
+                msg = (data.target && data.target.distinctive_usernames === 0)
+                    ? `${escUser(data.target_ip)} tried no rare usernames, so no IP can share one with it. Untick the rare-username filter to see matches on common usernames (and treat them with caution).`
+                    : `No IP shares a rare username with ${escUser(data.target_ip)}. Untick the rare-username filter to see matches on common usernames.`;
+            }
+            listDiv.innerHTML = `<div style="padding: 20px; text-align: center; color: #6c757d;">${msg}</div>`;
+            resultsDiv.style.display = 'block';
+            return;
+        }
+        
+        rows.forEach((r, i) => { r._rank = i + 1; });
+        selectedSimilarIPs.clear();
+        similarIPView = {
+            mode, rows, sortKey: 'rank', sortDir: 1,
+            target: data.target && data.target.ip ? data.target : null,
+            usernameAvailable: mode === 'usernames' || data.username_similarity_available !== false,
+        };
+        listDiv.innerHTML = `
+            <div style="background: white; border-radius: 4px; overflow: hidden; border: 1px solid #dee2e6;">
+                <div style="padding: 12px; background: #f8f9fa; border-bottom: 1px solid #dee2e6; font-weight: 600;">
+                    ${heading}
+                    <span style="font-weight: 400; font-size: 12px; color: #6c757d; margin-left: 8px;">Click a column header to sort</span>
+                </div>
+                <div id="ip-analyze-bar" style="display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: #f8f9fa; border-bottom: 1px solid #dee2e6;">
+                    <span style="font-size: 13px; font-weight: 600;"><span id="ip-selected-count">0</span> selected</span>
+                    <button id="ip-analyze-btn" onclick="analyzeSelectedSimilarIPs()" disabled
+                            title="Open the dashboard filtered to the selected IPs. Totals, countries, ASNs and usernames cover all of them; the IPs chart shows the top 10."
+                            style="padding: 6px 16px; background: #4c51bf; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500; white-space: nowrap; opacity: 0.55;">📊 Analyze selected</button>
+                </div>
+                <div id="similar-ips-table"></div>
+            </div>
+        `;
+        renderSimilarIPTable();
         resultsDiv.style.display = 'block';
+    }
+
+    const IP_SORT_DEFAULT_DIR = { rank: 1, ip: 1, similarity: -1, username_similarity: -1, rare: -1, total: -1, country: 1, asn: 1 };
+
+    function sortSimilarIPs(key) {
+        const v = similarIPView;
+        if (!v) return;
+        if (v.sortKey === key) v.sortDir = -v.sortDir;
+        else { v.sortKey = key; v.sortDir = IP_SORT_DEFAULT_DIR[key] || 1; }
+        renderSimilarIPTable();
+    }
+
+    function sortedSimilarIPRows(v) {
+        const byRank = (a, b) => a._rank - b._rank;
+        const value = {
+            rank: r => r._rank,
+            ip: r => r.ip,
+            similarity: r => r.similarity,
+            username_similarity: r => r.username_similarity,
+            rare: r => r.distinctive_shared_count,
+            total: r => r.total_attacks,
+            country: r => r.country,
+            asn: r => r.asn_name,
+        }[v.sortKey];
+        return v.rows.slice().sort((a, b) => {
+            const x = value(a), y = value(b);
+            const xMissing = x === null || x === undefined, yMissing = y === null || y === undefined;
+            if (xMissing || yMissing) return (xMissing - yMissing) || byRank(a, b);  // missing values always last
+            const cmp = typeof x === 'string' ? x.localeCompare(y, undefined, { numeric: true }) : x - y;
+            return v.sortDir * cmp || byRank(a, b);
+        });
+    }
+
+    // Purple, darker for higher values: a different colour from the behavioural
+    // badge on purpose, since the two scores are on different scales.
+    function usernameSimBadge(v) {
+        if (v === null || v === undefined) return '<span style="color: #adb5bd;">—</span>';
+        const strong = v >= 45;
+        return `<span style="display: inline-block; padding: 4px 8px; border-radius: 4px; font-weight: 600;
+                     background: rgba(124, 58, 237, ${(0.12 + 0.88 * v / 100).toFixed(2)}); color: ${strong ? 'white' : '#3b0764'};">${v}%</span>`;
+    }
+
+    // A list of usernames, one per line, with rare ones highlighted and a
+    // "+N more" line when the full count is larger than what's listed.
+    // ---- Selection + "Analyze selected" (same hand-off as the IP tab's button) ----
+    // Kept outside the table so re-sorting never loses ticked rows.
+    const selectedSimilarIPs = new Set();
+
+    function toggleSimilarIPSelection(ip) {
+        if (selectedSimilarIPs.has(ip)) selectedSimilarIPs.delete(ip);
+        else selectedSimilarIPs.add(ip);
+        updateIPAnalyzeBar();
+    }
+
+    function toggleAllSimilarIPs(checked) {
+        document.querySelectorAll('.ip-sel-check').forEach(cb => {
+            cb.checked = checked;
+            const ip = cb.getAttribute('data-ip');
+            if (checked) selectedSimilarIPs.add(ip); else selectedSimilarIPs.delete(ip);
+        });
+        updateIPAnalyzeBar();
+    }
+
+    function updateIPAnalyzeBar() {
+        const n = selectedSimilarIPs.size;
+        const count = document.getElementById('ip-selected-count');
+        const btn = document.getElementById('ip-analyze-btn');
+        if (count) count.textContent = n;
+        if (btn) { btn.disabled = n === 0; btn.style.opacity = n ? '1' : '0.55'; }
+    }
+
+    function analyzeSelectedSimilarIPs() {
+        const ips = Array.from(selectedSimilarIPs);
+        if (ips.length === 0) {
+            alert('Select at least one IP to analyze.');
+            return;
+        }
+        window.open(`dashboard.html?ips=${encodeURIComponent(ips.join('|||'))}`, '_blank');
+    }
+
+    function usernameListCell(names, total, rareSet, emptyText) {
+        if (!names || names.length === 0) return `<span style="color: #adb5bd;">${emptyText}</span>`;
+        const more = (total || 0) - names.length;
+        return names.map(u => {
+            const isRare = rareSet && rareSet.has(u);
+            return `<div style="font-family: monospace; font-size: 11px; margin: 1px 0;${isRare ? ' font-weight: 700; color: #5b21b6;' : ''}"
+                         ${isRare ? 'title="Rare: tried by fewer than 1% of IPs"' : ''}>${escUser(u) || '<em>(empty)</em>'}</div>`;
+        }).join('') + (more > 0 ? `<div style="font-size: 11px; color: #6c757d;">+${more.toLocaleString()} more</div>` : '');
+    }
+
+    function renderSimilarIPTable() {
+        const v = similarIPView;
+        const container = document.getElementById('similar-ips-table');
+        if (!v || !container) return;
+        const sorted = sortedSimilarIPRows(v);
+        const th = 'padding: 10px; border-bottom: 2px solid #dee2e6;';
+        const usernameMode = v.mode === 'usernames';
+
+        const sortHeader = (key, label, align, tip) => {
+            const active = v.sortKey === key;
+            const arrow = active ? (v.sortDir > 0 ? ' ▲' : ' ▼') : '';
+            return `<th onclick="sortSimilarIPs('${key}')" title="Sort: ${tip}"
+                        style="${th} text-align: ${align}; cursor: pointer; user-select: none; white-space: nowrap;${active ? ' color: #4c51bf;' : ''}">${label}${arrow}</th>`;
+        };
+        const unavailable = v.usernameAvailable ? '' :
+            ' <span title="Run summary_tables_code/create_ip_username_vectors.py to enable" style="cursor: help;">⚠️</span>';
+        const td = (content, extra = '', attrs = '') => `<td style="padding: 10px; vertical-align: top; ${extra}" ${attrs}>${content}</td>`;
+        const selectBox = ip => td(`<input type="checkbox" class="ip-sel-check" data-ip="${escUser(ip)}"
+                onchange="toggleSimilarIPSelection(this.getAttribute('data-ip'))" style="cursor: pointer;" ${selectedSimilarIPs.has(ip) ? 'checked' : ''}>`, 'text-align: center;');
+        const tagBadges = (tags, tooltip) => tags.map(r => `<span title="${escUser(tooltip(r))}" style="display: inline-block; margin: 2px; padding: 2px 6px; background: ${
+            r === 'Other cluster' || r.startsWith('Different') ? '#fef3c7; color: #92400e' : '#e7f3ff; color: #004085'
+        }; border-radius: 3px; font-size: 11px; cursor: help;">${escUser(r)}</span>`).join('');
+
+        // Pinned reference row: the searched IP. It has no "shared" usernames with
+        // itself, so its two username cells show its OWN top and rare usernames --
+        // the list each result below is compared against.
+        const targetRow = t => `
+            <tr style="background: #ede9fe; border-bottom: 3px solid #7c3aed;">
+                ${selectBox(t.ip)}
+                ${td('<span style="color: #6c757d;">—</span>')}
+                ${td(escUser(t.ip), 'font-family: monospace; font-weight: 700;')}
+                ${td('<span style="display: inline-block; padding: 4px 8px; background: #7c3aed; color: white; border-radius: 4px; font-weight: 600;">Searched</span>', 'text-align: center;')}
+                ${td('<span style="color: #6c757d;">—</span>', 'text-align: center;')}
+                ${td('<div style="font-size: 10px; color: #5b21b6; margin-bottom: 2px;">its top usernames</div>' +
+                     usernameListCell(t.top_usernames, t.weighted_usernames, new Set(t.rare_usernames || []), 'none'))}
+                ${td(t.distinctive_usernames === undefined ? '<span style="color: #adb5bd;">—</span>' :
+                     `<div style="font-weight: 700; color: #5b21b6; text-align: center;">${t.distinctive_usernames}</div>` +
+                     '<div style="font-size: 10px; color: #5b21b6; margin: 2px 0;">its rare usernames</div>' +
+                     usernameListCell(t.rare_usernames, t.distinctive_usernames, null, 'none'))}
+                ${td(formatNumber(t.total_attacks), 'text-align: right;')}
+                ${td(escUser(t.country) || 'N/A')}
+                ${td(escUser(t.asn_name) || 'N/A', 'font-size: 12px;')}
+                ${td('<span style="font-size: 12px; color: #5b21b6;">Reference row: the IP you searched. Bold purple usernames are rare.</span>')}
+            </tr>`;
+
+        const resultRow = (ip, idx) => {
+            const rareSet = new Set(ip.rare_shared_usernames || []);
+            const asnStyle = usernameMode && ip.different_asn ? 'font-weight: 600; color: #b45309;' : '';
+            const countryStyle = usernameMode && ip.different_country ? 'font-weight: 600; color: #b45309;' : '';
+            const n = ip.distinctive_shared_count;
+            const rareCell = n === null || n === undefined
+                ? '<span style="color: #adb5bd;">—</span>'
+                : n === 0
+                    ? `<div style="color: #9ca3af; text-align: center;" title="Shares only common usernames: a high score here is not meaningful">0</div>`
+                    : `<div style="font-weight: 700; color: #5b21b6; text-align: center;" title="${n} shared usernames tried by fewer than 1% of IPs">${n}</div>` +
+                      usernameListCell(ip.rare_shared_usernames, n, null, '');
+            return `
+            <tr style="border-bottom: 1px solid #dee2e6; ${idx % 2 === 0 ? 'background: #f8f9fa;' : ''}">
+                ${selectBox(ip.ip)}
+                ${td(ip._rank)}
+                ${td(escUser(ip.ip), 'font-family: monospace; font-weight: 500;')}
+                ${td(ip.similarity === null || ip.similarity === undefined
+                    ? '<span style="color: #adb5bd;" title="Not in the clustering data">—</span>'
+                    : `<span style="display: inline-block; padding: 4px 8px; background: ${getSimilarityColor(ip.similarity)}; color: white; border-radius: 4px; font-weight: 600;">${ip.similarity}%</span>`, 'text-align: center;')}
+                ${td(usernameSimBadge(ip.username_similarity), 'text-align: center;')}
+                ${td(usernameListCell(ip.shared_usernames, ip.shared_username_count, rareSet, 'none'), '',
+                     `title="${escUser((ip.shared_username_count || 0) + ' usernames in common, heaviest first; bold purple = rare')}"`)}
+                ${td(rareCell)}
+                ${td(formatNumber(ip.total_attacks), 'text-align: right;')}
+                ${td(escUser(ip.country) || 'N/A', countryStyle)}
+                ${td(escUser(ip.asn_name) || 'N/A', 'font-size: 12px; ' + asnStyle)}
+                ${td(tagBadges(ip.reasons || [], usernameMode ? getUsernameMatchTooltip : getReasonTooltip), 'font-size: 13px;')}
+            </tr>`;
+        };
+
+        container.innerHTML = `
+            <table style="width: 100%; border-collapse: collapse;">
+                <thead style="background: #f8f9fa;">
+                    <tr>
+                        <th style="${th} text-align: center; width: 30px;"><input type="checkbox" onchange="toggleAllSimilarIPs(this.checked)" title="Select all" style="cursor: pointer;"
+                            ${[...(v.target ? [v.target.ip] : []), ...v.rows.map(r => r.ip)].every(ip => selectedSimilarIPs.has(ip)) ? 'checked' : ''}></th>
+                        ${sortHeader('rank', 'Rank', 'left', usernameMode ? 'Username-similarity rank (original order)' : 'Behavioural rank (original order)')}
+                        ${sortHeader('ip', 'IP Address', 'left', 'IP address')}
+                        ${sortHeader('similarity', 'Behavioural', 'center', 'Behavioural similarity (attack pattern)')}
+                        ${sortHeader('username_similarity', 'Usernames' + unavailable, 'center', 'Username similarity (weighted overlap of usernames tried)')}
+                        <th style="${th} text-align: left;">Shared usernames</th>
+                        ${sortHeader('rare', 'Rare shared', 'center', 'How many shared usernames are rare (tried by fewer than 1% of IPs)')}
+                        ${sortHeader('total', 'Total Attacks', 'right', 'Total attacks')}
+                        ${sortHeader('country', 'Country', 'left', 'Country')}
+                        ${sortHeader('asn', 'ASN', 'left', 'ASN')}
+                        <th style="${th} text-align: left;">${usernameMode ? 'Relation' : 'Why Similar?'}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${v.target ? targetRow(v.target) : ''}
+                    ${sorted.map(resultRow).join('')}
+                </tbody>
+            </table>
+        `;
+        updateIPAnalyzeBar();
     }
     
     function getSimilarityColor(score) {
@@ -616,12 +891,16 @@
     }
     
     function clearSimilarSearch() {
+        similarIPView = null;
+        selectedSimilarIPs.clear();
         document.getElementById('similar-ip-input').value = '';
         document.getElementById('similar-results').style.display = 'none';
         document.getElementById('similar-error').style.display = 'none';
         document.getElementById('clear-similar-btn').style.display = 'none';
     }
     
+    paintSimilarIPModeButtons();
+
     // Allow Enter key to trigger search
     document.getElementById('similar-ip-input').addEventListener('keypress', function(e) {
         if (e.key === 'Enter') {
