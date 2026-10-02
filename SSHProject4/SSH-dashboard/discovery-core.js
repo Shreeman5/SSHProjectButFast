@@ -20,9 +20,11 @@ let sortColumns = ['total_attacks'];  // Array of columns to sort by
 let sortDirection = 'desc';  // Single direction for now (all columns same direction)
 let debugRankings = null;  // Store ranking debug info
 
-// Selection state (for countries and ASNs only)
+// Selection state (one set per dimension; only the active tab's set is used)
 let selectedCountries = new Set();
 let selectedASNs = new Set();
+let selectedIPs = new Set();
+let selectedUsernames = new Set();
 const MAX_SELECTED = 10;
 
 // Available optional columns for each dimension

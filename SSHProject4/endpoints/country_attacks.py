@@ -5,6 +5,8 @@ Chart 2: Top countries with filter support
 
 from flask import jsonify, request
 from utils.db import get_db, parse_date_params
+from utils.filters import (has_discovery_selection, source_table, conditions_sql,
+                           IP_USERNAME_TABLE, total_series_query, top_n_series_query)
 
 
 def register_country_attacks(app):
@@ -14,10 +16,20 @@ def register_country_attacks(app):
     def get_country_attacks():
         """Chart 2: Top countries - with username filter support"""
         start, end = parse_date_params()
+        
+        # ASN / IP / username discovery mode: top countries among the selection, every filter applied
+        if has_discovery_selection(request.args):
+            query = top_n_series_query(source_table(request.args), 'country',
+                                       conditions_sql(request.args, 't'), start, end)
+            conn = get_db()
+            result = conn.execute(query).fetchall()
+            conn.close()
+            return jsonify([{'date': row[0], 'country': row[1], 'attacks': row[2]} for row in result])
+        
         country_filter = request.args.get('country')
         countries_filter = request.args.get('countries')  # Comma-separated list from discovery
         asn_filter = request.args.get('asn')
-        asns_filter = request.args.get('asns')  # Comma-separated list from discovery
+        asns_filter = request.args.get('asns')  # |||-separated list from discovery (handled above)
         ip_filter = request.args.get('ip')
         username_filter = request.args.get('username')
         
@@ -182,52 +194,6 @@ def register_country_attacks(app):
                     FROM complete_grid g
                     LEFT JOIN daily_asn_attacks a
                         ON g.date = a.date AND g.country = a.country AND a.asn_name = '{asn_filter}'
-                    GROUP BY g.date, g.country
-                    ORDER BY g.date, attacks DESC
-                """
-            result = conn.execute(query).fetchall()
-        
-        # Priority 3.5: ASNs filter - show top countries for those ASNs
-        elif asns_filter:
-            asns = asns_filter.split(',')
-            asn_list = ', '.join([f"'{a.strip()}'" for a in asns])
-            
-            if country_filter:
-                # Specific ASNs + specific country
-                query = f"""
-                    WITH date_range AS (
-                        SELECT UNNEST(generate_series(DATE '{start}', DATE '{end}', INTERVAL 1 DAY))::DATE as date
-                    )
-                    SELECT 
-                        d.date::VARCHAR as date,
-                        '{country_filter}' as country,
-                        COALESCE(SUM(a.attacks), 0) as attacks
-                    FROM date_range d
-                    LEFT JOIN daily_asn_attacks a
-                        ON d.date = a.date AND a.country = '{country_filter}' AND a.asn_name IN ({asn_list})
-                    GROUP BY d.date
-                    ORDER BY d.date
-                """
-            else:
-                # ASNs selected: show top 10 countries for these ASNs
-                query = f"""
-                    WITH asn_countries AS (
-                        SELECT country FROM daily_asn_attacks
-                        WHERE date BETWEEN '{start}' AND '{end}' 
-                          AND asn_name IN ({asn_list})
-                        GROUP BY country ORDER BY SUM(attacks) DESC LIMIT 10
-                    ),
-                    date_range AS (
-                        SELECT UNNEST(generate_series(DATE '{start}', DATE '{end}', INTERVAL 1 DAY))::DATE as date
-                    ),
-                    complete_grid AS (
-                        SELECT d.date, t.country FROM date_range d CROSS JOIN asn_countries t
-                    )
-                    SELECT 
-                        g.date::VARCHAR as date, g.country, COALESCE(SUM(a.attacks), 0) as attacks
-                    FROM complete_grid g
-                    LEFT JOIN daily_asn_attacks a
-                        ON g.date = a.date AND g.country = a.country AND a.asn_name IN ({asn_list})
                     GROUP BY g.date, g.country
                     ORDER BY g.date, attacks DESC
                 """

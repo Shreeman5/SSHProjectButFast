@@ -5,6 +5,8 @@ Chart 1: Total attacks over time with filter support
 
 from flask import jsonify, request
 from utils.db import get_db, parse_date_params
+from utils.filters import (has_discovery_selection, source_table, conditions_sql,
+                           IP_USERNAME_TABLE, total_series_query, top_n_series_query)
 
 
 def register_total_attacks(app):
@@ -14,10 +16,21 @@ def register_total_attacks(app):
     def get_total_attacks():
         """Chart 1: Total attacks over time - with username filter support"""
         start, end = parse_date_params()
+        
+        # ASN / IP / username discovery mode: filter the raw tables by every active filter
+        # (so drilling into a country/ASN/username keeps the selected IPs applied)
+        if has_discovery_selection(request.args):
+            query = total_series_query(source_table(request.args),
+                                       conditions_sql(request.args, 't'), start, end)
+            conn = get_db()
+            result = conn.execute(query).fetchall()
+            conn.close()
+            return jsonify([{'date': row[0], 'attacks': row[1]} for row in result])
+        
         country_filter = request.args.get('country')
         countries_filter = request.args.get('countries')  # Comma-separated list from discovery
         asn_filter = request.args.get('asn')
-        asns_filter = request.args.get('asns')  # Comma-separated list from discovery
+        asns_filter = request.args.get('asns')  # |||-separated list from discovery (handled above)
         ip_filter = request.args.get('ip')
         username_filter = request.args.get('username')
         
@@ -90,29 +103,6 @@ def register_total_attacks(app):
                 FROM date_range d
                 LEFT JOIN daily_asn_attacks a
                     ON d.date = a.date AND a.asn_name = '{asn_filter}' AND {country_condition}
-                GROUP BY d.date
-                ORDER BY d.date
-            """).fetchall()
-        elif asns_filter:
-            # Multiple ASNs from discovery dashboard
-            print(f"\n🔍 DEBUG TOTAL_ATTACKS - asns_filter:")
-            print(f"   Raw: {asns_filter}")
-            asns = asns_filter.split('|||')
-            print(f"   After split: {asns}")
-            print(f"   Count: {len(asns)}")
-            asn_list = ', '.join([f"'{a.strip()}'" for a in asns])
-            print(f"   SQL list: {asn_list[:200]}...")
-            
-            result = conn.execute(f"""
-                WITH date_range AS (
-                    SELECT UNNEST(generate_series(DATE '{start}', DATE '{end}', INTERVAL 1 DAY))::DATE as date
-                )
-                SELECT 
-                    d.date::VARCHAR as date,
-                    COALESCE(SUM(a.attacks), 0) as attacks
-                FROM date_range d
-                LEFT JOIN daily_asn_attacks a
-                    ON d.date = a.date AND a.asn_name IN ({asn_list})
                 GROUP BY d.date
                 ORDER BY d.date
             """).fetchall()

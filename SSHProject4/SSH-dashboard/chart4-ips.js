@@ -22,12 +22,7 @@ async function loadIPAttacks() {
     
     console.log('🐛 chart4 - final URL:', url);
     
-    if (state.ip) {
-        url += `&ip=${encodeURIComponent(state.ip)}`;
-    }
-    if (state.username) {
-        url += `&username=${encodeURIComponent(state.username)}`;
-    }
+    url = appendIPAndUsernameFilters(url);
     
     const data = await fetch(url).then(r => r.json());
     console.log('🐛 chart4 - response length:', data.length);

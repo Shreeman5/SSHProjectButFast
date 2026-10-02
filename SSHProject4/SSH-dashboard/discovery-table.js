@@ -14,7 +14,7 @@ function renderTable() {
     const tbody = document.getElementById('table-body');
     
     if (pageData.length === 0) {
-        const colspan = (currentDimension === 'country' || currentDimension === 'asn') ? 13 : 12;
+        const colspan = 13;  // every dimension now has a checkbox column
         tbody.innerHTML = `<tr><td colspan="${colspan}" style="text-align: center; padding: 40px;">No data found</td></tr>`;
         return;
     }
@@ -94,9 +94,22 @@ function renderTable() {
             rowHTML += `</tr>`;
             return rowHTML;
         } else {
-            // IP and Username dimensions - dynamic rendering
+            // IP and Username dimensions - dynamic rendering (with selection checkbox)
+            const selectionSet = getSelectionSetForDimension();
+            const entityKey = getEntityName(item);
+            const isSelected = selectionSet.has(entityKey);
+            const isDisabled = !isSelected && selectionSet.size >= MAX_SELECTED;
+            
             let rowHTML = `
                 <tr>
+                    <td style="text-align: center;">
+                        <input type="checkbox" 
+                               class="entity-checkbox" 
+                               data-entity="${escapeAttr(entityKey)}"
+                               ${isSelected ? 'checked' : ''}
+                               ${isDisabled ? 'disabled' : ''}
+                               style="cursor: ${isDisabled && !isSelected ? 'not-allowed' : 'pointer'}; width: 16px; height: 16px;">
+                    </td>
                     <td>${rank}</td>
                     <td><strong>${entityName}</strong></td>`;
             
@@ -130,6 +143,13 @@ function renderTable() {
         checkboxes.forEach(checkbox => {
             checkbox.addEventListener('change', function() {
                 toggleASNSelection(this.getAttribute('data-asn'));
+            });
+        });
+    } else if (currentDimension === 'ip' || currentDimension === 'username') {
+        const checkboxes = document.querySelectorAll('.entity-checkbox');
+        checkboxes.forEach(checkbox => {
+            checkbox.addEventListener('change', function() {
+                toggleEntitySelection(this.getAttribute('data-entity'));
             });
         });
     }
@@ -222,6 +242,7 @@ function renderHeader() {
     } else {
         // IP and Username dimensions - dynamic headers
         const columns = [
+            { label: '', key: null, tooltip: 'Select for analysis', sortable: false, isCheckbox: true },
             { label: 'Rank', key: null, tooltip: 'Position', sortable: false },
             { label: getDimensionLabel(), key: getDimensionKey(), tooltip: `The ${currentDimension}`, sortable: false }
         ];
@@ -242,6 +263,13 @@ function renderHeader() {
         });
         
         header.innerHTML = columns.map(col => {
+            if (col.isCheckbox) {
+                return `<th style="width: 40px;" title="${col.tooltip}">
+                    <input type="checkbox" id="select-all" onchange="toggleSelectAllEntity()" 
+                           style="cursor: pointer; width: 16px; height: 16px;">
+                </th>`;
+            }
+            
             if (!col.sortable) {
                 return `<th title="${col.tooltip}">${col.label}</th>`;
             }
@@ -380,14 +408,84 @@ function updateSelectedCountASN() {
     }
 }
 
+// IP / Username selection (shared logic - both use the generic entity checkbox)
+function getSelectionSetForDimension(dimension = currentDimension) {
+    return {
+        'country': selectedCountries,
+        'asn': selectedASNs,
+        'ip': selectedIPs,
+        'username': selectedUsernames
+    }[dimension];
+}
+
+function escapeAttr(str) {
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+function toggleEntitySelection(entity) {
+    const selectionSet = getSelectionSetForDimension();
+    if (selectionSet.has(entity)) {
+        selectionSet.delete(entity);
+    } else if (selectionSet.size < MAX_SELECTED) {
+        selectionSet.add(entity);
+    }
+    updateSelectedCountEntity();
+    renderTable();
+}
+
+function toggleSelectAllEntity() {
+    const checkbox = document.getElementById('select-all');
+    const selectionSet = getSelectionSetForDimension();
+    const startIdx = (currentPage - 1) * pageSize;
+    const endIdx = startIdx + pageSize;
+    const pageData = filteredData.slice(startIdx, endIdx);
+    
+    if (checkbox.checked) {
+        for (const item of pageData) {
+            if (selectionSet.size >= MAX_SELECTED) break;
+            selectionSet.add(getEntityName(item));
+        }
+    } else {
+        for (const item of pageData) {
+            selectionSet.delete(getEntityName(item));
+        }
+    }
+    updateSelectedCountEntity();
+    renderTable();
+}
+
+function updateSelectedCountEntity() {
+    const selectionSet = getSelectionSetForDimension();
+    const span = document.getElementById('selected-count');
+    if (span) span.textContent = selectionSet.size;
+    
+    const btn = document.getElementById('analyze-selected-btn');
+    if (btn) {
+        btn.style.opacity = selectionSet.size === 0 ? '0.5' : '1';
+        btn.style.cursor = selectionSet.size === 0 ? 'not-allowed' : 'pointer';
+    }
+}
+
+// Refresh the count/button for whichever tab is active
+function refreshSelectedCount() {
+    if (currentDimension === 'country') updateSelectedCount();
+    else if (currentDimension === 'asn') updateSelectedCountASN();
+    else updateSelectedCountEntity();
+}
+
 // Analyze
 function analyzeSelected() {
-    if (selectedCountries.size === 0 && selectedASNs.size === 0) {
-        alert('Please select at least one country or ASN to analyze.');
+    if (selectedCountries.size === 0 && selectedASNs.size === 0 &&
+        selectedIPs.size === 0 && selectedUsernames.size === 0) {
+        alert('Please select at least one item to analyze.');
         return;
     }
     
-    let url = 'http://127.0.0.1:5500/SSH-dashboard/dashboard.html?';
+    let url = 'dashboard.html?';
     
     if (selectedCountries.size > 0) {
         const countries = Array.from(selectedCountries);
@@ -395,6 +493,12 @@ function analyzeSelected() {
     } else if (selectedASNs.size > 0) {
         const asns = Array.from(selectedASNs);
         url += `asns=${encodeURIComponent(asns.join('|||'))}`;
+    } else if (selectedIPs.size > 0) {
+        const ips = Array.from(selectedIPs);
+        url += `ips=${encodeURIComponent(ips.join('|||'))}`;
+    } else if (selectedUsernames.size > 0) {
+        const usernames = Array.from(selectedUsernames);
+        url += `usernames=${encodeURIComponent(usernames.join('|||'))}`;
     }
     
     window.open(url, '_blank');

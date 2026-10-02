@@ -15,7 +15,9 @@ let state = {
     asn: null,
     asns: null,  // Array of selected ASNs from discovery.html
     ip: null,
+    ips: null,  // Array of selected IPs from discovery.html
     username: null,
+    usernames: null,  // Array of selected usernames from discovery.html
     dateRangeHistory: []
 };
 
@@ -52,6 +54,38 @@ function initState() {
         state.asns = asnsParam.split('|||').map(a => a.trim()).filter(a => a.length > 0);
         console.log(`🎯 Discovery Mode (ASNs): Analyzing ${state.asns.length} ASNs:`, state.asns);
     }
+    
+    // Handle ips parameter (|||-separated list from discovery.html)
+    const ipsParam = params.get('ips');
+    if (ipsParam) {
+        state.ips = ipsParam.split('|||').map(i => i.trim()).filter(i => i.length > 0);
+        console.log(`🎯 Discovery Mode (IPs): Analyzing ${state.ips.length} IPs:`, state.ips);
+    }
+    
+    // Handle usernames parameter (|||-separated, since usernames can contain commas)
+    const usernamesParam = params.get('usernames');
+    if (usernamesParam) {
+        state.usernames = usernamesParam.split('|||').filter(u => u.length > 0);
+        console.log(`🎯 Discovery Mode (Usernames): Analyzing ${state.usernames.length} usernames:`, state.usernames);
+    }
+}
+
+// Shared by every chart: append IP and username filters.
+// Priority (same as countries/ASNs): single drill-down filter > discovery list > nothing
+function appendIPAndUsernameFilters(url) {
+    if (state.ip) {
+        url += `&ip=${encodeURIComponent(state.ip)}`;
+    } else if (state.ips && state.ips.length > 0) {
+        url += `&ips=${encodeURIComponent(state.ips.join('|||'))}`;
+    }
+    
+    if (state.username) {
+        url += `&username=${encodeURIComponent(state.username)}`;
+    } else if (state.usernames && state.usernames.length > 0) {
+        url += `&usernames=${encodeURIComponent(state.usernames.join('|||'))}`;
+    }
+    
+    return url;
 }
 
 function updateFilterInfo() {
@@ -377,6 +411,17 @@ function updateURL() {
     // Preserve countries from discovery mode
     if (state.countries && state.countries.length > 0) {
         params.set('countries', state.countries.join(','));
+    }
+    
+    // Preserve ASNs / IPs / usernames from discovery mode
+    if (state.asns && state.asns.length > 0) {
+        params.set('asns', state.asns.join('|||'));
+    }
+    if (state.ips && state.ips.length > 0) {
+        params.set('ips', state.ips.join('|||'));
+    }
+    if (state.usernames && state.usernames.length > 0) {
+        params.set('usernames', state.usernames.join('|||'));
     }
     
     // Single country filter (only if not in discovery mode)

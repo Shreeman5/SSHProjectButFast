@@ -5,6 +5,8 @@ Chart 5: Top usernames with filter support
 
 from flask import jsonify, request
 from utils.db import get_db, parse_date_params
+from utils.filters import (has_discovery_selection, source_table, conditions_sql,
+                           IP_USERNAME_TABLE, total_series_query, top_n_series_query)
 
 
 def register_username_attacks(app):
@@ -14,10 +16,21 @@ def register_username_attacks(app):
     def get_username_attacks():
         """Chart 5: Top usernames - with username filter support"""
         start, end = parse_date_params()
+        
+        # ASN / IP / username discovery mode: top usernames among the selection, every filter applied
+        if has_discovery_selection(request.args):
+            query = top_n_series_query(IP_USERNAME_TABLE, 'username',
+                                       conditions_sql(request.args, 't'), start, end)
+            conn = get_db()
+            result = conn.execute(query).fetchall()
+            conn.close()
+            return jsonify([{'date': row[0], 'username': row[1], 'country': 'Mixed', 'attacks': row[2]}
+                            for row in result])
+        
         country_filter = request.args.get('country')
         countries_filter = request.args.get('countries')  # Comma-separated list from discovery
         asn_filter = request.args.get('asn')
-        asns_filter = request.args.get('asns')  # Comma-separated list from discovery
+        asns_filter = request.args.get('asns')  # |||-separated list from discovery (handled above)
         ip_filter = request.args.get('ip')
         username_filter = request.args.get('username')
         
@@ -112,50 +125,6 @@ def register_username_attacks(app):
                 FROM complete_grid g
                 LEFT JOIN daily_ip_username_attacks d 
                     ON g.date = d.date AND g.username = d.username AND d.IP = '{ip_filter}'
-                GROUP BY g.date, g.username
-                ORDER BY g.date, attacks DESC
-            """
-        elif asns_filter:
-            # Multiple ASNs from discovery - show top 10 usernames from those ASNs
-            asns = asns_filter.split('|||')
-            asn_list = ', '.join([f"'{a.strip()}'" for a in asns])
-            
-            # Add country constraint if present
-            country_where = ""
-            if country_filter:
-                country_where = f"AND country = '{country_filter}'"
-            elif countries_filter:
-                countries = countries_filter.split(',')
-                country_list = ', '.join([f"'{c.strip()}'" for c in countries])
-                country_where = f"AND country IN ({country_list})"
-            
-            query = f"""
-                WITH top_usernames AS (
-                    SELECT username
-                    FROM daily_ip_username_attacks
-                    WHERE date BETWEEN '{start}' AND '{end}' 
-                      AND asn_name IN ({asn_list})
-                      {country_where}
-                    GROUP BY username
-                    ORDER BY SUM(attacks) DESC
-                    LIMIT 10
-                ),
-                date_range AS (
-                    SELECT UNNEST(generate_series(DATE '{start}', DATE '{end}', INTERVAL 1 DAY))::DATE as date
-                ),
-                complete_grid AS (
-                    SELECT d.date, t.username FROM date_range d CROSS JOIN top_usernames t
-                )
-                SELECT 
-                    g.date::VARCHAR as date,
-                    g.username,
-                    'Mixed' as country,
-                    COALESCE(SUM(u.attacks), 0) as attacks
-                FROM complete_grid g
-                LEFT JOIN daily_ip_username_attacks u 
-                    ON g.date = u.date AND g.username = u.username 
-                    AND u.asn_name IN ({asn_list})
-                    {country_where.replace('AND ', 'AND u.')}
                 GROUP BY g.date, g.username
                 ORDER BY g.date, attacks DESC
             """

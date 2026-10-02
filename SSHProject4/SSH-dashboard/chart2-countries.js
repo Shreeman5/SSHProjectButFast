@@ -13,16 +13,10 @@ async function loadCountryAttacks() {
     if (state.asn) {
         url += `&asn=${encodeURIComponent(state.asn)}`;
     } else if (state.asns && state.asns.length > 0) {
-        url += `&asns=${encodeURIComponent(state.asns.join(','))}`;
+        url += `&asns=${encodeURIComponent(state.asns.join('|||'))}`;  // ||| like every other chart: ASN names contain commas
     }
     
-    if (state.ip) {
-        url += `&ip=${encodeURIComponent(state.ip)}`;
-    }
-    
-    if (state.username) {
-        url += `&username=${encodeURIComponent(state.username)}`;
-    }
+    url = appendIPAndUsernameFilters(url);
     
     const data = await fetch(url).then(r => r.json());
     

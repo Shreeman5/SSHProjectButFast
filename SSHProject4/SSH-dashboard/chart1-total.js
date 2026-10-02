@@ -3,14 +3,12 @@ async function loadTotalAttacks() {
     let chartData;
     let chartColor = '#7c4dff';  // Default purple
     
-    // Add IP filter
-    if (state.ip) {
-        url += `&ip=${encodeURIComponent(state.ip)}`;
-    }
-    
-    // Add username filter
-    if (state.username) {
-        url += `&username=${encodeURIComponent(state.username)}`;
+    // Add IP and username filters (single or multiple)
+    url = appendIPAndUsernameFilters(url);
+    if (!state.ip && state.ips && state.ips.length > 0) {
+        chartColor = '#ef4444';  // Red for multi-IP discovery mode
+    } else if (!state.username && state.usernames && state.usernames.length > 0) {
+        chartColor = '#06b6d4';  // Cyan for multi-username discovery mode
     }
     
     // Add ASN filter (single or multiple)
@@ -45,7 +43,9 @@ async function loadTotalAttacks() {
     console.log('🐛 chart1 - first 3 records:', chartData.slice(0, 3));
     
     // Set color based on active filter (only if not in multi-country/asn mode)
-    if ((!state.countries || state.countries.length === 0) && (!state.asns || state.asns.length === 0)) {
+    const inDiscoveryMode = [state.countries, state.asns, state.ips, state.usernames]
+        .some(list => list && list.length > 0);
+    if (!inDiscoveryMode) {
         if (state.ip) {
             chartColor = '#ff7f0e';  // Orange for IP
         } else if (state.username) {

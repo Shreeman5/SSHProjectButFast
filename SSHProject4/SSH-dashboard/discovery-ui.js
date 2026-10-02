@@ -204,6 +204,8 @@ function switchDimension(dimension) {
     // Clear selection state
     selectedCountries.clear();
     selectedASNs.clear();
+    selectedIPs.clear();
+    selectedUsernames.clear();
     
     // Close column dropdown when switching dimensions
     const dropdown = document.getElementById('column-selector-dropdown');
@@ -264,14 +266,20 @@ function switchDimension(dimension) {
     renderHeader();
     
     // Show/hide "Analyze Selected" button based on dimension
+    updateAnalyzeButton();
+}
+
+// Show the "Analyze Selected" button for tabs that support it and refresh its count.
+// Called on page load and whenever the tab changes.
+function updateAnalyzeButton() {
     const analyzeBtn = document.getElementById('analyze-selected-btn');
-    if (analyzeBtn) {
-        if (dimension === 'country' || dimension === 'asn') {
-            analyzeBtn.style.display = 'inline-block';
-            updateSelectedCount();
-        } else {
-            analyzeBtn.style.display = 'none';
-        }
+    if (!analyzeBtn) return;
+    
+    if (['country', 'asn', 'ip', 'username'].includes(currentDimension)) {
+        analyzeBtn.style.display = 'inline-block';
+        refreshSelectedCount();
+    } else {
+        analyzeBtn.style.display = 'none';
     }
 }
 
@@ -279,4 +287,5 @@ function switchDimension(dimension) {
 window.addEventListener('DOMContentLoaded', () => {
     loadData();
     renderHeader();
+    updateAnalyzeButton();  // The default tab (Countries) needs the button too
 });

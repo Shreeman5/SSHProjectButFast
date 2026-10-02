@@ -23,12 +23,7 @@ async function loadASNAttacks() {
         url += `&asns=${encoded}`;
     }
     
-    if (state.ip) {
-        url += `&ip=${encodeURIComponent(state.ip)}`;
-    }
-    if (state.username) {
-        url += `&username=${encodeURIComponent(state.username)}`;
-    }
+    url = appendIPAndUsernameFilters(url);
     
     const data = await fetch(url).then(r => r.json());
     const series = d3.group(data, d => d.asn_name);
