@@ -18,6 +18,7 @@ let state = {
     ips: null,  // Array of selected IPs from discovery.html
     username: null,
     usernames: null,  // Array of selected usernames from discovery.html
+    searched: null,   // IP searched in the discovery similarity window (enables chart 7)
     dateRangeHistory: []
 };
 
@@ -61,6 +62,9 @@ function initState() {
         state.ips = ipsParam.split('|||').map(i => i.trim()).filter(i => i.length > 0);
         console.log(`🎯 Discovery Mode (IPs): Analyzing ${state.ips.length} IPs:`, state.ips);
     }
+    
+    // IP searched in the similarity window, sent along with its results
+    state.searched = params.get('searched') || null;
     
     // Handle usernames parameter (|||-separated, since usernames can contain commas)
     const usernamesParam = params.get('usernames');
@@ -424,6 +428,10 @@ function updateURL() {
         params.set('usernames', state.usernames.join('|||'));
     }
     
+    if (state.searched) {
+        params.set('searched', state.searched);
+    }
+    
     // Single country filter (only if not in discovery mode)
     if (state.country && !state.countries) {
         params.set('country', state.country);
@@ -438,7 +446,8 @@ async function loadAllCharts() {
         loadCountryAttacks(),
         loadIPAttacks(),
         loadUsernameAttacks(),
-        loadASNAttacks()
+        loadASNAttacks(),
+        typeof loadBurialChart === 'function' ? loadBurialChart() : null
     ];
     
     await Promise.all(chartsToLoad);

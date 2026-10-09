@@ -32,7 +32,7 @@
     <!-- 2. Country Chart -->
     <div id="chart2" class="chart-container">
         <div class="chart-title" style="display: flex; align-items: center; gap: 10px;">
-            <span>Top 10 Attacking Countries</span>
+            <span>Attacking Countries</span>
             <span id="restore-countries-container" style="display: none;"></span>
         </div>
         <div class="chart-subtitle">Hover legend to highlight | Left-click to filter | Right-click to cross out</div>
@@ -42,7 +42,7 @@
     <!-- 3. ASN Chart -->
     <div id="chart6" class="chart-container">
         <div class="chart-title" style="display: flex; align-items: center; gap: 10px;">
-            <span>Top 10 Attacking ASN Organizations</span>
+            <span>Attacking ASN Organizations</span>
             <span id="restore-asns-container" style="display: none;"></span>
         </div>
         <div class="chart-subtitle">Hover legend to highlight | Left-click to filter | Right-click to cross out</div>
@@ -52,7 +52,7 @@
     <!-- 4. IP Chart -->
     <div id="chart4" class="chart-container">
         <div class="chart-title" style="display: flex; align-items: center; gap: 10px;">
-            <span>Top 10 Attacking IPs</span>
+            <span>Attacking IPs</span>
             <span id="restore-ips-container" style="display: none;"></span>
         </div>
         <div class="chart-subtitle">Hover legend to highlight | Left-click to filter | Right-click to cross out</div>
@@ -62,11 +62,18 @@
     <!-- 5. Username Chart -->
     <div id="chart5" class="chart-container">
         <div class="chart-title" style="display: flex; align-items: center; gap: 10px;">
-            <span>Top 10 Attacking Usernames</span>
+            <span>Attacking Usernames</span>
             <span id="restore-usernames-container" style="display: none;"></span>
         </div>
         <div class="chart-subtitle">Hover legend to highlight | Left-click to filter | Right-click to cross out</div>
         <div id="usernamechart"></div>
+    </div>
+    
+    <!-- 6. Burial chart (only when opened from the IP similarity window) -->
+    <div id="chart7" class="chart-container" style="display: none;">
+        <div class="chart-title">How Buried Is the Searched IP?</div>
+        <div class="chart-subtitle">Ranked by total attacks over the whole dataset in the selected dates (drill-down filters are ignored)</div>
+        <div id="burialchart"></div>
     </div>
 
     <!-- Load JavaScript modules -->
@@ -77,6 +84,7 @@
     <script src="chart4-ips.js"></script>
     <script src="chart5-usernames.js"></script>
     <script src="chart6-asns.js"></script>
+    <script src="chart7-burial.js"></script>
     
     <!-- Initialize dashboard -->
     <script>

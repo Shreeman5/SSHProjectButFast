@@ -30,6 +30,7 @@ from endpoints.similar_ips_endpoint import register_similar_ips
 from endpoints.similar_usernames_endpoint import register_similar_usernames
 
 from endpoints.tags_endpoint import register_tags
+from endpoints.burial_endpoint import register_burial
 
 # Register all endpoints
 register_total_attacks(app)
@@ -48,6 +49,7 @@ register_asn_summary(app)
 register_username_summary(app)
 register_similar_ips(app)
 register_tags(app)
+register_burial(app)
 
 if __name__ == '__main__':
     from utils.config import DB_PATH
